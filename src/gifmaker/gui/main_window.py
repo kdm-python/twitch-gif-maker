@@ -1,0 +1,111 @@
+"""Main application window scaffold for the gifmaker GUI."""
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+class MainWindow(QMainWindow):
+    """Primary window scaffold for video/GIF import and export workflows."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("GIF Maker")
+        self.resize(1100, 760)
+
+        self.create_menu()
+        self.build_layout()
+
+    def create_menu(self) -> None:
+        """Create the top-level menu structure."""
+        menu_bar = self.menuBar()
+        menu_bar.addMenu("File")
+        menu_bar.addMenu("Edit")
+        menu_bar.addMenu("View")
+        menu_bar.addMenu("Help")
+
+    def create_preview_panel(self) -> QGroupBox:
+        """Create the expandable preview section."""
+        group = QGroupBox("Video Preview")
+        layout = QVBoxLayout(group)
+
+        preview_placeholder = QLabel("Preview area placeholder")
+        preview_placeholder.setAlignment(Qt.AlignCenter)
+        preview_placeholder.setMinimumHeight(260)
+        preview_placeholder.setStyleSheet("border: 1px dashed palette(mid);")
+
+        layout.addWidget(preview_placeholder)
+        return group
+
+    def create_timeline_panel(self) -> QGroupBox:
+        """Create a fixed-height timeline placeholder section."""
+        group = QGroupBox("Timeline")
+        group.setFixedHeight(170)
+
+        layout = QVBoxLayout(group)
+        timeline_placeholder = QLabel("Timeline placeholder")
+        timeline_placeholder.setAlignment(Qt.AlignCenter)
+        timeline_placeholder.setStyleSheet("border: 1px dashed palette(mid);")
+
+        layout.addWidget(timeline_placeholder)
+        return group
+
+    def create_export_panel(self) -> QGroupBox:
+        """Create export settings with placeholder controls."""
+        group = QGroupBox("Export")
+
+        root_layout = QVBoxLayout(group)
+        form_layout = QFormLayout()
+
+        start_input = QLineEdit()
+        start_input.setPlaceholderText("e.g. 00:00:00")
+
+        end_input = QLineEdit()
+        end_input.setPlaceholderText("e.g. 00:00:05")
+
+        fps_input = QSpinBox()
+        fps_input.setRange(1, 120)
+        fps_input.setValue(24)
+
+        width_input = QSpinBox()
+        width_input.setRange(1, 8192)
+        width_input.setValue(640)
+
+        form_layout.addRow("Start", start_input)
+        form_layout.addRow("End", end_input)
+        form_layout.addRow("FPS", fps_input)
+        form_layout.addRow("Width", width_input)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        button_row.addWidget(QPushButton("Export GIF"))
+
+        root_layout.addLayout(form_layout)
+        root_layout.addLayout(button_row)
+
+        return group
+
+    def build_layout(self) -> None:
+        """Assemble all panels into the window's central widget."""
+        central = QWidget(self)
+        root_layout = QVBoxLayout(central)
+
+        preview_group = self.create_preview_panel()
+        timeline_group = self.create_timeline_panel()
+        export_group = self.create_export_panel()
+
+        root_layout.addWidget(preview_group, stretch=1)
+        root_layout.addWidget(timeline_group)
+        root_layout.addWidget(export_group)
+
+        self.setCentralWidget(central)

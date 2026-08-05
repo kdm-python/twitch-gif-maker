@@ -2,17 +2,16 @@
 name = "gifmaker"
 version = "0.1.0"
 description = ""
-authors = [
-    {name = "Kyle Marden",email = "demolaze@Mac.home"}
-]
+authors = [{ name = "Kyle Marden", email = "demolaze@Mac.home" }]
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
-dependencies = [
-    "pyside6 (>=6.11.1,<7.0.0)"
-]
+dependencies = ["pyside6 (>=6.11.1,<7.0.0)"]
+
+[project.scripts]
+gifmaker = "src.gifmaker.main:main"
 
 [tool.poetry]
-packages = [{include = "gifmaker", from = "src"}]
+packages = [{ include = "gifmaker", from = "src" }]
 
 
 [tool.poetry.group.dev.dependencies]
