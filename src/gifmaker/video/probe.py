@@ -8,8 +8,6 @@ import json
 import subprocess
 from pathlib import Path
 
-from loguru import logger
-
 from gifmaker.models.video_info import VideoInfo
 
 

@@ -1,7 +1,9 @@
 """Main application window scaffold for the gifmaker GUI."""
 
+from loguru import logger
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,11 +22,14 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+        self.current_video_path: str | None = None
+
         self.setWindowTitle("GIF Maker")
         self.resize(1100, 760)
 
         self.create_menu()
         self.build_layout()
+        logger.info("Main window initialized.")
 
     def create_menu(self) -> None:
         """Create the top-level menu structure."""
@@ -100,6 +105,10 @@ class MainWindow(QMainWindow):
         central = QWidget(self)
         root_layout = QVBoxLayout(central)
 
+        open_button = QPushButton("Open Video File")
+        open_button.clicked.connect(self.open_file_dialog)
+        root_layout.addWidget(open_button)
+
         preview_group = self.create_preview_panel()
         timeline_group = self.create_timeline_panel()
         export_group = self.create_export_panel()
@@ -109,3 +118,18 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(export_group)
 
         self.setCentralWidget(central)
+
+    def open_file_dialog(self) -> None:
+        """Open a file dialog to select a video file."""
+        file_dialog = QFileDialog(self)
+        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setNameFilter("Video Files (*.mp4 *.avi *.mov)")
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                self.current_video_path = selected_files[0]
+                logger.info(f"Selected file: {self.current_video_path}")
+            else:
+                logger.info("No file selected.")
+        else:
+            logger.info("File dialog cancelled.")
