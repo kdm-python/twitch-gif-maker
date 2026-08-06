@@ -1,5 +1,7 @@
 """Main application window scaffold for the gifmaker GUI."""
 
+from pathlib import Path
+
 from loguru import logger
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -30,6 +32,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.current_video_path: str | None = None
+        self._is_seek_dragging = False
         self._pending_video_path: str | None = None
         self._pending_video_info: VideoInfo | None = None
         self._previous_video_path: str | None = None
@@ -79,11 +82,16 @@ class MainWindow(QMainWindow):
 
         self.seek_slider = QSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 0)
+        self.seek_slider.sliderPressed.connect(self.on_seek_slider_pressed)
         self.seek_slider.sliderMoved.connect(self.on_seek_slider_moved)
+        self.seek_slider.sliderReleased.connect(self.on_seek_slider_released)
+
+        self.seek_time_label = QLabel("00:00:00 / 00:00:00")
 
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(self.pause_button)
         controls_layout.addWidget(self.seek_slider, stretch=1)
+        controls_layout.addWidget(self.seek_time_label)
 
         layout.addWidget(self.video_widget)
         layout.addLayout(controls_layout)
@@ -113,7 +121,7 @@ class MainWindow(QMainWindow):
         self.export_start_input.setPlaceholderText("e.g. 00:00:00")
 
         self.export_end_input = QLineEdit()
-        self.export_end_input.setPlaceholderText("e.g. 00:00:05")
+        self.export_end_input.setPlaceholderText("e.g. 00:05:00")
 
         self.export_fps_input = QSpinBox()
         self.export_fps_input.setRange(1, 120)
@@ -275,18 +283,31 @@ class MainWindow(QMainWindow):
         self.media_player.pause()
         logger.info("Playback paused.")
 
+    def on_seek_slider_pressed(self) -> None:
+        """Mark that the user is actively dragging the seek handle."""
+        self._is_seek_dragging = True
+
     def on_seek_slider_moved(self, position: int) -> None:
-        """Seek to a new position from the preview controls."""
-        self.media_player.setPosition(position)
+        """Update the displayed time while dragging without seeking yet."""
+        self._update_seek_time_label(current_ms=position)
+
+    def on_seek_slider_released(self) -> None:
+        """Seek once when the user releases the slider handle."""
+        self._is_seek_dragging = False
+        target_position = self.seek_slider.value()
+        self.media_player.setPosition(target_position)
+        self._update_seek_time_label(current_ms=target_position)
 
     def on_duration_changed(self, duration: int) -> None:
         """Sync the seek range with loaded media duration."""
         self.seek_slider.setRange(0, max(duration, 0))
+        self._update_seek_time_label()
 
     def on_position_changed(self, position: int) -> None:
         """Sync the seek slider with the current playback position."""
-        if not self.seek_slider.isSliderDown():
+        if not self._is_seek_dragging:
             self.seek_slider.setValue(position)
+            self._update_seek_time_label(current_ms=position)
 
     def on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         """Handle media load lifecycle events for preview updates."""
@@ -340,6 +361,7 @@ class MainWindow(QMainWindow):
             self.media_player.setSource(QUrl())
             self.seek_slider.setValue(0)
             self.seek_slider.setRange(0, 0)
+            self._update_seek_time_label(current_ms=0)
 
         self._clear_pending_preview_state()
 
@@ -350,6 +372,30 @@ class MainWindow(QMainWindow):
         self._previous_video_path = None
         self._previous_source = None
         self._previous_info_texts = {}
+
+    def _update_seek_time_label(self, current_ms: int | None = None) -> None:
+        """Update the current/total playback time text."""
+        if current_ms is None:
+            current_ms = self.media_player.position()
+        total_ms = max(self.media_player.duration(), 0)
+        self.seek_time_label.setText(
+            f"{self._format_ms(current_ms)} / {self._format_ms(total_ms)}"
+        )
+
+    def _format_ms(self, milliseconds: int) -> str:
+        """Format milliseconds as MM:SS:CC or HH:MM:SS:CC."""
+        total_centiseconds = round(max(milliseconds, 0) / 10)
+
+        hours = total_centiseconds // 360_000
+        remaining_after_hours = total_centiseconds % 360_000
+        minutes = remaining_after_hours // 6_000
+        remaining_after_minutes = remaining_after_hours % 6_000
+        seconds = remaining_after_minutes // 100
+        centiseconds = remaining_after_minutes % 100
+
+        if hours > 0:
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}:{centiseconds:02d}"
+        return f"{minutes:02d}:{seconds:02d}:{centiseconds:02d}"
 
     def export_gif_from_selection(self) -> None:
         """Export a selected time segment from the current video to GIF."""
@@ -375,10 +421,15 @@ class MainWindow(QMainWindow):
             logger.error("Invalid export time input: {}", exc)
             return
 
+        default_save_name = "output.gif"
+        if self.current_video_path is not None:
+            video_path = Path(self.current_video_path)
+            default_save_name = str(video_path.with_suffix(".gif"))
+
         output_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save GIF",
-            "output.gif",
+            default_save_name,
             "GIF Files (*.gif)",
         )
         if not output_path:
@@ -410,7 +461,7 @@ class MainWindow(QMainWindow):
         logger.info("GIF export complete: {}", output_path)
 
     def _parse_time_input(self, value: str) -> float:
-        """Parse seconds or HH:MM:SS(.ms) time input."""
+        """Parse seconds, MM:SS:CC, HH:MM:SS:CC, or legacy HH:MM:SS.xx."""
         if ":" not in value:
             seconds = float(value)
             if seconds < 0:
@@ -418,16 +469,57 @@ class MainWindow(QMainWindow):
             return seconds
 
         parts = value.split(":")
-        if len(parts) != 3:
-            raise ValueError("Time must be in HH:MM:SS format")
+        if len(parts) == 2:
+            minutes = int(parts[0])
+            seconds = float(parts[1])
 
-        hours = int(parts[0])
-        minutes = int(parts[1])
-        seconds = float(parts[2])
+            if minutes < 0 or seconds < 0:
+                raise ValueError("Time values must be non-negative")
+            if seconds >= 60:
+                raise ValueError("Seconds must be less than 60")
 
-        if hours < 0 or minutes < 0 or seconds < 0:
-            raise ValueError("Time values must be non-negative")
-        if minutes >= 60 or seconds >= 60:
-            raise ValueError("Minutes and seconds must be less than 60")
+            return (minutes * 60) + seconds
 
-        return (hours * 3600) + (minutes * 60) + seconds
+        if len(parts) == 3:
+            if "." in parts[2]:
+                # Backward-compatible parse for existing HH:MM:SS.xx entries.
+                hours = int(parts[0])
+                minutes = int(parts[1])
+                seconds = float(parts[2])
+
+                if hours < 0 or minutes < 0 or seconds < 0:
+                    raise ValueError("Time values must be non-negative")
+                if minutes >= 60 or seconds >= 60:
+                    raise ValueError("Minutes and seconds must be less than 60")
+
+                return (hours * 3600) + (minutes * 60) + seconds
+
+            minutes = int(parts[0])
+            seconds = int(parts[1])
+            centiseconds = int(parts[2])
+
+            if minutes < 0 or seconds < 0 or centiseconds < 0:
+                raise ValueError("Time values must be non-negative")
+            if seconds >= 60:
+                raise ValueError("Seconds must be less than 60")
+            if centiseconds >= 100:
+                raise ValueError("Centiseconds must be less than 100")
+
+            return (minutes * 60) + seconds + (centiseconds / 100)
+
+        if len(parts) == 4:
+            hours = int(parts[0])
+            minutes = int(parts[1])
+            seconds = int(parts[2])
+            centiseconds = int(parts[3])
+
+            if hours < 0 or minutes < 0 or seconds < 0 or centiseconds < 0:
+                raise ValueError("Time values must be non-negative")
+            if minutes >= 60 or seconds >= 60:
+                raise ValueError("Minutes and seconds must be less than 60")
+            if centiseconds >= 100:
+                raise ValueError("Centiseconds must be less than 100")
+
+            return (hours * 3600) + (minutes * 60) + seconds + (centiseconds / 100)
+
+        raise ValueError("Time must be seconds, MM:SS:CC, HH:MM:SS:CC, or HH:MM:SS.xx")
