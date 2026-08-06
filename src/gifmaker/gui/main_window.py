@@ -32,6 +32,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.current_video_path: str | None = None
+        self.clip_start_time: float | None = None
+        self.clip_end_time: float | None = None
         self._is_seek_dragging = False
         self._pending_video_path: str | None = None
         self._pending_video_info: VideoInfo | None = None
@@ -80,6 +82,12 @@ class MainWindow(QMainWindow):
         self.pause_button = QPushButton("Pause")
         self.pause_button.clicked.connect(self.pause_preview)
 
+        self.set_start_button = QPushButton("Set Start")
+        self.set_start_button.clicked.connect(self.set_clip_start)
+
+        self.set_end_button = QPushButton("Set End")
+        self.set_end_button.clicked.connect(self.set_clip_end)
+
         self.seek_slider = QSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 0)
         self.seek_slider.sliderPressed.connect(self.on_seek_slider_pressed)
@@ -90,11 +98,17 @@ class MainWindow(QMainWindow):
 
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(self.pause_button)
+        controls_layout.addWidget(self.set_start_button)
+        controls_layout.addWidget(self.set_end_button)
         controls_layout.addWidget(self.seek_slider, stretch=1)
         controls_layout.addWidget(self.seek_time_label)
 
+        self.clip_selection_label = QLabel()
+        self.update_clip_selection_display()
+
         layout.addWidget(self.video_widget)
         layout.addLayout(controls_layout)
+        layout.addWidget(self.clip_selection_label)
         return group
 
     def create_timeline_panel(self) -> QGroupBox:
@@ -320,6 +334,7 @@ class MainWindow(QMainWindow):
 
             self.media_player.setPosition(0)
             self.media_player.pause()
+            self.reset_clip_selection()
             self.update_video_info_from_model(
                 self._pending_video_path,
                 self._pending_video_info,
@@ -373,6 +388,59 @@ class MainWindow(QMainWindow):
         self._previous_source = None
         self._previous_info_texts = {}
 
+    def reset_clip_selection(self) -> None:
+        """Reset the currently selected clip range."""
+        self.clip_start_time = None
+        self.clip_end_time = None
+        self.update_clip_selection_display()
+
+    def set_clip_start(self) -> None:
+        """Store the current preview position as clip start."""
+        if self.media_player.source().isEmpty():
+            self.export_status_label.setText("Status: Load a video first.")
+            logger.error("Cannot set clip start without a loaded video.")
+            return
+
+        self.clip_start_time = self.media_player.position() / 1000.0
+        logger.info("Clip start set at {:.2f}s", self.clip_start_time)
+        self.update_clip_selection_display()
+
+    def set_clip_end(self) -> None:
+        """Store the current preview position as clip end."""
+        if self.media_player.source().isEmpty():
+            self.export_status_label.setText("Status: Load a video first.")
+            logger.error("Cannot set clip end without a loaded video.")
+            return
+
+        new_end_time = self.media_player.position() / 1000.0
+        if self.clip_start_time is not None and new_end_time < self.clip_start_time:
+            self.export_status_label.setText(
+                "Status: End time must be after selected start time."
+            )
+            logger.error(
+                "Rejected clip end {:.2f}s before clip start {:.2f}s",
+                new_end_time,
+                self.clip_start_time,
+            )
+            return
+
+        self.clip_end_time = new_end_time
+        logger.info("Clip end set at {:.2f}s", self.clip_end_time)
+        self.update_clip_selection_display()
+
+    def update_clip_selection_display(self) -> None:
+        """Refresh the clip selection summary shown in the preview panel."""
+        if self.clip_start_time is None or self.clip_end_time is None:
+            self.clip_selection_label.setText("Selection:\nNot selected")
+            return
+
+        start_text = self._format_ms(round(self.clip_start_time * 1000))
+        end_text = self._format_ms(round(self.clip_end_time * 1000))
+        duration = self.clip_end_time - self.clip_start_time
+        self.clip_selection_label.setText(
+            f"Selection:\n{start_text} -> {end_text}\nDuration:\n{duration:.2f}s"
+        )
+
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
         if current_ms is None:
@@ -404,22 +472,31 @@ class MainWindow(QMainWindow):
             logger.error("Export requested without a loaded video.")
             return
 
-        try:
-            start_seconds = self._parse_time_input(
-                self.export_start_input.text().strip() or "0"
+        if self.clip_start_time is not None and self.clip_end_time is not None:
+            start_seconds = self.clip_start_time
+            end_seconds = self.clip_end_time
+            logger.info(
+                "Using selected clip range for export: {:.2f}s to {:.2f}s",
+                start_seconds,
+                end_seconds,
             )
-            end_text = self.export_end_input.text().strip()
-            if not end_text:
-                duration_ms = self.media_player.duration()
-                if duration_ms <= 0:
-                    raise ValueError("End time is required before export")
-                end_seconds = duration_ms / 1000.0
-            else:
-                end_seconds = self._parse_time_input(end_text)
-        except ValueError as exc:
-            self.export_status_label.setText(f"Status: {exc}")
-            logger.error("Invalid export time input: {}", exc)
-            return
+        else:
+            try:
+                start_seconds = self._parse_time_input(
+                    self.export_start_input.text().strip() or "0"
+                )
+                end_text = self.export_end_input.text().strip()
+                if not end_text:
+                    duration_ms = self.media_player.duration()
+                    if duration_ms <= 0:
+                        raise ValueError("End time is required before export")
+                    end_seconds = duration_ms / 1000.0
+                else:
+                    end_seconds = self._parse_time_input(end_text)
+            except ValueError as exc:
+                self.export_status_label.setText(f"Status: {exc}")
+                logger.error("Invalid export time input: {}", exc)
+                return
 
         default_save_name = "output.gif"
         if self.current_video_path is not None:
