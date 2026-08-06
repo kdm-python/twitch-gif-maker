@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gifmaker.video.probe import VideoProbeError, probe_video
+
 
 class MainWindow(QMainWindow):
     """Primary window scaffold for video/GIF import and export workflows."""
@@ -109,6 +111,9 @@ class MainWindow(QMainWindow):
         open_button.clicked.connect(self.open_file_dialog)
         root_layout.addWidget(open_button)
 
+        video_info_group = self.create_video_info_panel()
+        root_layout.addWidget(video_info_group)
+
         preview_group = self.create_preview_panel()
         timeline_group = self.create_timeline_panel()
         export_group = self.create_export_panel()
@@ -119,6 +124,41 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central)
 
+    def create_video_info_panel(self) -> QGroupBox:
+        """Create a panel to display video metadata."""
+        group = QGroupBox("Video Information")
+        layout = QFormLayout(group)
+
+        self.video_info_labels: dict[str, QLabel] = {
+            "File": QLabel("-"),
+            "Duration": QLabel("-"),
+            "Resolution": QLabel("-"),
+            "FPS": QLabel("-"),
+            "Codec": QLabel("-"),
+        }
+
+        for label, widget in self.video_info_labels.items():
+            layout.addRow(label, widget)
+
+        return group
+
+    def update_video_info(
+        self,
+        file_path: str,
+        *,
+        duration: float,
+        width: int,
+        height: int,
+        fps: float,
+        codec: str,
+    ) -> None:
+        """Update the video information panel with probed metadata."""
+        self.video_info_labels["File"].setText(file_path)
+        self.video_info_labels["Duration"].setText(f"{duration:.2f} s")
+        self.video_info_labels["Resolution"].setText(f"{width}x{height}")
+        self.video_info_labels["FPS"].setText(f"{fps:.2f}")
+        self.video_info_labels["Codec"].setText(codec)
+
     def open_file_dialog(self) -> None:
         """Open a file dialog to select a video file."""
         file_dialog = QFileDialog(self)
@@ -128,7 +168,25 @@ class MainWindow(QMainWindow):
             selected_files = file_dialog.selectedFiles()
             if selected_files:
                 self.current_video_path = selected_files[0]
-                logger.info(f"Selected file: {self.current_video_path}")
+                logger.info("Selected file: {}", self.current_video_path)
+                try:
+                    video_info = probe_video(self.current_video_path)
+                except VideoProbeError as exc:
+                    logger.error(
+                        "Failed to probe selected video '{}': {}",
+                        self.current_video_path,
+                        exc,
+                    )
+                    return
+
+                self.update_video_info(
+                    self.current_video_path,
+                    duration=video_info.duration,
+                    width=video_info.width,
+                    height=video_info.height,
+                    fps=video_info.fps,
+                    codec=video_info.codec,
+                )
             else:
                 logger.info("No file selected.")
         else:
