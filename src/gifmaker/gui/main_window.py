@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from gifmaker.models.video_info import VideoInfo
+from gifmaker.services.gif_export import GifExportError, export_gif
 from gifmaker.video.probe import VideoProbeError, probe_video
 
 
@@ -108,31 +109,36 @@ class MainWindow(QMainWindow):
         root_layout = QVBoxLayout(group)
         form_layout = QFormLayout()
 
-        start_input = QLineEdit()
-        start_input.setPlaceholderText("e.g. 00:00:00")
+        self.export_start_input = QLineEdit()
+        self.export_start_input.setPlaceholderText("e.g. 00:00:00")
 
-        end_input = QLineEdit()
-        end_input.setPlaceholderText("e.g. 00:00:05")
+        self.export_end_input = QLineEdit()
+        self.export_end_input.setPlaceholderText("e.g. 00:00:05")
 
-        fps_input = QSpinBox()
-        fps_input.setRange(1, 120)
-        fps_input.setValue(24)
+        self.export_fps_input = QSpinBox()
+        self.export_fps_input.setRange(1, 120)
+        self.export_fps_input.setValue(24)
 
-        width_input = QSpinBox()
-        width_input.setRange(1, 8192)
-        width_input.setValue(640)
+        self.export_width_input = QSpinBox()
+        self.export_width_input.setRange(1, 8192)
+        self.export_width_input.setValue(640)
 
-        form_layout.addRow("Start", start_input)
-        form_layout.addRow("End", end_input)
-        form_layout.addRow("FPS", fps_input)
-        form_layout.addRow("Width", width_input)
+        form_layout.addRow("Start", self.export_start_input)
+        form_layout.addRow("End", self.export_end_input)
+        form_layout.addRow("FPS", self.export_fps_input)
+        form_layout.addRow("Width", self.export_width_input)
 
         button_row = QHBoxLayout()
         button_row.addStretch(1)
-        button_row.addWidget(QPushButton("Export GIF"))
+        self.export_button = QPushButton("Export GIF")
+        self.export_button.clicked.connect(self.export_gif_from_selection)
+        button_row.addWidget(self.export_button)
+
+        self.export_status_label = QLabel("Status: -")
 
         root_layout.addLayout(form_layout)
         root_layout.addLayout(button_row)
+        root_layout.addWidget(self.export_status_label)
 
         return group
 
@@ -344,3 +350,84 @@ class MainWindow(QMainWindow):
         self._previous_video_path = None
         self._previous_source = None
         self._previous_info_texts = {}
+
+    def export_gif_from_selection(self) -> None:
+        """Export a selected time segment from the current video to GIF."""
+        if self.current_video_path is None:
+            self.export_status_label.setText("Status: Load a video first.")
+            logger.error("Export requested without a loaded video.")
+            return
+
+        try:
+            start_seconds = self._parse_time_input(
+                self.export_start_input.text().strip() or "0"
+            )
+            end_text = self.export_end_input.text().strip()
+            if not end_text:
+                duration_ms = self.media_player.duration()
+                if duration_ms <= 0:
+                    raise ValueError("End time is required before export")
+                end_seconds = duration_ms / 1000.0
+            else:
+                end_seconds = self._parse_time_input(end_text)
+        except ValueError as exc:
+            self.export_status_label.setText(f"Status: {exc}")
+            logger.error("Invalid export time input: {}", exc)
+            return
+
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save GIF",
+            "output.gif",
+            "GIF Files (*.gif)",
+        )
+        if not output_path:
+            self.export_status_label.setText("Status: Export cancelled.")
+            logger.info("GIF export cancelled by user.")
+            return
+
+        fps = self.export_fps_input.value()
+        width = self.export_width_input.value()
+
+        self.export_status_label.setText("Status: Exporting...")
+        logger.info("Starting GIF export to '{}'", output_path)
+
+        try:
+            export_gif(
+                self.current_video_path,
+                output_path,
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
+                fps=fps,
+                width=width,
+            )
+        except GifExportError as exc:
+            self.export_status_label.setText(f"Status: Export failed: {exc}")
+            logger.error("GIF export failed: {}", exc)
+            return
+
+        self.export_status_label.setText("Status: Export complete.")
+        logger.info("GIF export complete: {}", output_path)
+
+    def _parse_time_input(self, value: str) -> float:
+        """Parse seconds or HH:MM:SS(.ms) time input."""
+        if ":" not in value:
+            seconds = float(value)
+            if seconds < 0:
+                raise ValueError("Time values must be non-negative")
+            return seconds
+
+        parts = value.split(":")
+        if len(parts) != 3:
+            raise ValueError("Time must be in HH:MM:SS format")
+
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        seconds = float(parts[2])
+
+        if hours < 0 or minutes < 0 or seconds < 0:
+            raise ValueError("Time values must be non-negative")
+        if minutes >= 60 or seconds >= 60:
+            raise ValueError("Minutes and seconds must be less than 60")
+
+        return (hours * 3600) + (minutes * 60) + seconds
