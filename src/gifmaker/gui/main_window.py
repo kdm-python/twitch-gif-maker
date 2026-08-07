@@ -1,9 +1,13 @@
 """Main application window scaffold for the gifmaker GUI."""
 
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -41,12 +45,15 @@ class MainWindow(QMainWindow):
         self._previous_source: QUrl | None = None
         self._previous_info_texts: dict[str, str] = {}
         self._restoring_previous_source = False
+        self._preview_temp_file: Path | None = None
+        self._preview_movie: QMovie | None = None
+        self._last_preview_settings: dict[str, float | int | str] | None = None
 
         self.setWindowTitle("GIF Maker")
-        self.resize(1100, 760)
 
         self.create_menu()
         self.build_layout()
+        self._fit_to_available_screen()
         logger.info("Main window initialized.")
 
     def create_menu(self) -> None:
@@ -111,19 +118,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.clip_selection_label)
         return group
 
-    def create_timeline_panel(self) -> QGroupBox:
-        """Create a fixed-height timeline placeholder section."""
-        group = QGroupBox("Timeline")
-        group.setFixedHeight(170)
-
-        layout = QVBoxLayout(group)
-        timeline_placeholder = QLabel("Timeline placeholder")
-        timeline_placeholder.setAlignment(Qt.AlignCenter)
-        timeline_placeholder.setStyleSheet("border: 1px dashed palette(mid);")
-
-        layout.addWidget(timeline_placeholder)
-        return group
-
     def create_export_panel(self) -> QGroupBox:
         """Create export settings with placeholder controls."""
         group = QGroupBox("Export")
@@ -152,8 +146,13 @@ class MainWindow(QMainWindow):
 
         button_row = QHBoxLayout()
         button_row.addStretch(1)
-        self.export_button = QPushButton("Export GIF")
+        self.generate_preview_button = QPushButton("Generate Preview")
+        self.generate_preview_button.clicked.connect(self.generate_gif_preview)
+
+        self.export_button = QPushButton("Export")
         self.export_button.clicked.connect(self.export_gif_from_selection)
+
+        button_row.addWidget(self.generate_preview_button)
         button_row.addWidget(self.export_button)
 
         self.export_status_label = QLabel("Status: -")
@@ -163,6 +162,31 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self.export_status_label)
 
         return group
+
+    def create_gif_preview_panel(self) -> QGroupBox:
+        """Create the GIF preview panel shown below the video player."""
+        preview_group = QGroupBox("GIF Preview")
+        preview_layout = QVBoxLayout(preview_group)
+
+        self.gif_preview_label = QLabel("Generate preview to display GIF")
+        self.gif_preview_label.setAlignment(Qt.AlignCenter)
+        self.gif_preview_label.setMinimumHeight(140)
+        self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
+
+        preview_controls = QHBoxLayout()
+        self.gif_preview_play_button = QPushButton("Play")
+        self.gif_preview_play_button.clicked.connect(self.play_gif_preview)
+        self.gif_preview_pause_button = QPushButton("Pause")
+        self.gif_preview_pause_button.clicked.connect(self.pause_gif_preview)
+
+        preview_controls.addStretch(1)
+        preview_controls.addWidget(self.gif_preview_play_button)
+        preview_controls.addWidget(self.gif_preview_pause_button)
+
+        preview_layout.addWidget(self.gif_preview_label)
+        preview_layout.addLayout(preview_controls)
+
+        return preview_group
 
     def build_layout(self) -> None:
         """Assemble all panels into the window's central widget."""
@@ -176,15 +200,29 @@ class MainWindow(QMainWindow):
         video_info_group = self.create_video_info_panel()
         root_layout.addWidget(video_info_group)
 
-        preview_group = self.create_preview_panel()
-        timeline_group = self.create_timeline_panel()
+        video_preview_group = self.create_preview_panel()
+        gif_preview_group = self.create_gif_preview_panel()
         export_group = self.create_export_panel()
 
-        root_layout.addWidget(preview_group, stretch=1)
-        root_layout.addWidget(timeline_group)
+        root_layout.addWidget(video_preview_group, stretch=1)
+        root_layout.addWidget(gif_preview_group)
         root_layout.addWidget(export_group)
 
         self.setCentralWidget(central)
+
+    def _fit_to_available_screen(self) -> None:
+        """Keep initial and maximum window size inside available screen bounds."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            self.resize(1100, 760)
+            return
+
+        available = screen.availableGeometry()
+        target_width = min(1100, available.width())
+        target_height = min(760, available.height())
+
+        self.setMaximumSize(available.width(), available.height())
+        self.resize(target_width, target_height)
 
     def create_video_info_panel(self) -> QGroupBox:
         """Create a panel to display video metadata."""
@@ -335,6 +373,7 @@ class MainWindow(QMainWindow):
             self.media_player.setPosition(0)
             self.media_player.pause()
             self.reset_clip_selection()
+            self._clear_preview_state(remove_temp_file=True)
             self.update_video_info_from_model(
                 self._pending_video_path,
                 self._pending_video_info,
@@ -472,36 +511,9 @@ class MainWindow(QMainWindow):
             logger.error("Export requested without a loaded video.")
             return
 
-        if self.clip_start_time is not None and self.clip_end_time is not None:
-            start_seconds = self.clip_start_time
-            end_seconds = self.clip_end_time
-            logger.info(
-                "Using selected clip range for export: {:.2f}s to {:.2f}s",
-                start_seconds,
-                end_seconds,
-            )
-        else:
-            try:
-                start_seconds = self._parse_time_input(
-                    self.export_start_input.text().strip() or "0"
-                )
-                end_text = self.export_end_input.text().strip()
-                if not end_text:
-                    duration_ms = self.media_player.duration()
-                    if duration_ms <= 0:
-                        raise ValueError("End time is required before export")
-                    end_seconds = duration_ms / 1000.0
-                else:
-                    end_seconds = self._parse_time_input(end_text)
-            except ValueError as exc:
-                self.export_status_label.setText(f"Status: {exc}")
-                logger.error("Invalid export time input: {}", exc)
-                return
-
         default_save_name = "output.gif"
-        if self.current_video_path is not None:
-            video_path = Path(self.current_video_path)
-            default_save_name = str(video_path.with_suffix(".gif"))
+        video_path = Path(self.current_video_path)
+        default_save_name = str(video_path.with_suffix(".gif"))
 
         output_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -514,8 +526,34 @@ class MainWindow(QMainWindow):
             logger.info("GIF export cancelled by user.")
             return
 
-        fps = self.export_fps_input.value()
-        width = self.export_width_input.value()
+        if (
+            self._preview_temp_file is not None
+            and self._preview_temp_file.exists()
+            and self._last_preview_settings is not None
+        ):
+            self.export_status_label.setText("Status: Exporting preview...")
+            logger.info(
+                "Exporting from last generated preview '{}' to '{}'",
+                self._preview_temp_file,
+                output_path,
+            )
+            try:
+                shutil.copyfile(self._preview_temp_file, output_path)
+            except OSError as exc:
+                self.export_status_label.setText(f"Status: Export failed: {exc}")
+                logger.error("Failed to export from preview file: {}", exc)
+                return
+
+            self.export_status_label.setText("Status: Export complete.")
+            logger.info("GIF export complete: {}", output_path)
+            return
+
+        try:
+            render_settings = self._resolve_render_settings()
+        except ValueError as exc:
+            self.export_status_label.setText(f"Status: {exc}")
+            logger.error("Invalid export time input: {}", exc)
+            return
 
         self.export_status_label.setText("Status: Exporting...")
         logger.info("Starting GIF export to '{}'", output_path)
@@ -524,10 +562,10 @@ class MainWindow(QMainWindow):
             export_gif(
                 self.current_video_path,
                 output_path,
-                start_seconds=start_seconds,
-                end_seconds=end_seconds,
-                fps=fps,
-                width=width,
+                start_seconds=render_settings["start_seconds"],
+                end_seconds=render_settings["end_seconds"],
+                fps=render_settings["fps"],
+                width=render_settings["width"],
             )
         except GifExportError as exc:
             self.export_status_label.setText(f"Status: Export failed: {exc}")
@@ -536,6 +574,151 @@ class MainWindow(QMainWindow):
 
         self.export_status_label.setText("Status: Export complete.")
         logger.info("GIF export complete: {}", output_path)
+
+    def generate_gif_preview(self) -> None:
+        """Generate a temporary GIF preview from the current settings."""
+        if self.current_video_path is None:
+            self.export_status_label.setText("Status: Load a video first.")
+            logger.error("Preview requested without a loaded video.")
+            return
+
+        try:
+            render_settings = self._resolve_render_settings()
+        except ValueError as exc:
+            self.export_status_label.setText(f"Status: {exc}")
+            logger.error("Invalid preview time input: {}", exc)
+            return
+
+        fd, temp_name = tempfile.mkstemp(
+            prefix="gifmaker-preview-",
+            suffix=".gif",
+        )
+        os.close(fd)
+        temp_file = Path(temp_name)
+        previous_preview_file = self._preview_temp_file
+
+        self.export_status_label.setText("Status: Generating preview...")
+        logger.info("Generating preview GIF: {}", temp_file)
+
+        try:
+            export_gif(
+                self.current_video_path,
+                temp_file,
+                start_seconds=render_settings["start_seconds"],
+                end_seconds=render_settings["end_seconds"],
+                fps=render_settings["fps"],
+                width=render_settings["width"],
+            )
+            self._set_preview_movie(temp_file)
+        except (GifExportError, RuntimeError) as exc:
+            self._remove_file_if_exists(temp_file)
+            self.export_status_label.setText(f"Status: Preview failed: {exc}")
+            logger.error("Preview generation failed: {}", exc)
+            return
+
+        self._preview_temp_file = temp_file
+        self._last_preview_settings = {
+            "source_path": self.current_video_path,
+            **render_settings,
+        }
+        if previous_preview_file is not None and previous_preview_file != temp_file:
+            self._remove_file_if_exists(previous_preview_file)
+
+        self.export_status_label.setText("Status: Preview ready. Click Export to save.")
+        logger.info("Preview generation complete: {}", temp_file)
+
+    def play_gif_preview(self) -> None:
+        """Play the generated GIF preview."""
+        if self._preview_movie is None:
+            return
+
+        if self._preview_movie.state() == QMovie.MovieState.NotRunning:
+            self._preview_movie.start()
+            return
+
+        self._preview_movie.setPaused(False)
+
+    def pause_gif_preview(self) -> None:
+        """Pause the generated GIF preview."""
+        if self._preview_movie is None:
+            return
+
+        self._preview_movie.setPaused(True)
+
+    def _resolve_render_settings(self) -> dict[str, float | int]:
+        """Resolve start/end/fps/width from clip selection or export controls."""
+        if self.clip_start_time is not None and self.clip_end_time is not None:
+            start_seconds = self.clip_start_time
+            end_seconds = self.clip_end_time
+            logger.info(
+                "Using selected clip range for render: {:.2f}s to {:.2f}s",
+                start_seconds,
+                end_seconds,
+            )
+        else:
+            start_seconds = self._parse_time_input(
+                self.export_start_input.text().strip() or "0"
+            )
+            end_text = self.export_end_input.text().strip()
+            if not end_text:
+                duration_ms = self.media_player.duration()
+                if duration_ms <= 0:
+                    raise ValueError("End time is required before export")
+                end_seconds = duration_ms / 1000.0
+            else:
+                end_seconds = self._parse_time_input(end_text)
+
+        if end_seconds <= start_seconds:
+            raise ValueError("End time must be greater than start time")
+
+        return {
+            "start_seconds": start_seconds,
+            "end_seconds": end_seconds,
+            "fps": self.export_fps_input.value(),
+            "width": self.export_width_input.value(),
+        }
+
+    def _set_preview_movie(self, gif_path: Path) -> None:
+        """Display a generated GIF in the preview panel."""
+        movie = QMovie(str(gif_path))
+        if not movie.isValid():
+            raise RuntimeError("Generated preview GIF could not be loaded")
+
+        if self._preview_movie is not None:
+            self._preview_movie.stop()
+
+        movie.setCacheMode(QMovie.CacheMode.CacheAll)
+        self.gif_preview_label.setMovie(movie)
+        movie.start()
+        self._preview_movie = movie
+
+    def _clear_preview_state(self, *, remove_temp_file: bool) -> None:
+        """Clear preview UI state and optionally remove the temp GIF file."""
+        preview_file = self._preview_temp_file
+        if self._preview_movie is not None:
+            self._preview_movie.stop()
+            self._preview_movie = None
+
+        self.gif_preview_label.clear()
+        self.gif_preview_label.setText("Generate preview to display GIF")
+
+        self._preview_temp_file = None
+        self._last_preview_settings = None
+
+        if remove_temp_file and preview_file is not None:
+            self._remove_file_if_exists(preview_file)
+
+    def _remove_file_if_exists(self, file_path: Path) -> None:
+        """Best-effort removal for temporary preview artifacts."""
+        try:
+            file_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Failed to remove preview file '{}': {}", file_path, exc)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Handle app close by cleaning up preview temp files."""
+        self._clear_preview_state(remove_temp_file=True)
+        super().closeEvent(event)
 
     def _parse_time_input(self, value: str) -> float:
         """Parse seconds, MM:SS:CC, HH:MM:SS:CC, or legacy HH:MM:SS.xx."""

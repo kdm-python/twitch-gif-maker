@@ -62,5 +62,8 @@ htmlcov/
 *.mp4
 *.mp3
 
+# Mockups
+*.html
+
 # Misc
 .cache/
