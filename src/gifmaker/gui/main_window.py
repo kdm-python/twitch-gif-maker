@@ -19,8 +19,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QSpinBox,
+    QSplitter,
     QStyle,
     QStyleOptionSlider,
     QVBoxLayout,
@@ -254,10 +256,12 @@ class MainWindow(QMainWindow):
     def create_preview_panel(self) -> QGroupBox:
         """Create the expandable preview section."""
         group = QGroupBox("Video Preview")
+        group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         layout = QVBoxLayout(group)
 
         self.video_widget = QVideoWidget(group)
-        self.video_widget.setMinimumHeight(260)
+        self.video_widget.setMinimumHeight(160)
+        self.video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_widget.setStyleSheet("border: 1px solid palette(mid);")
 
         self.media_player = QMediaPlayer(group)
@@ -336,6 +340,8 @@ class MainWindow(QMainWindow):
     def create_export_panel(self) -> QGroupBox:
         """Create export settings with placeholder controls."""
         group = QGroupBox("Export")
+        group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        group.setMinimumHeight(190)
 
         root_layout = QVBoxLayout(group)
         form_layout = QFormLayout()
@@ -381,11 +387,15 @@ class MainWindow(QMainWindow):
     def create_gif_preview_panel(self) -> QGroupBox:
         """Create the GIF preview panel shown below the video player."""
         preview_group = QGroupBox("GIF Preview")
+        preview_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         preview_layout = QVBoxLayout(preview_group)
 
         self.gif_preview_label = QLabel("Generate preview to display GIF")
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
-        self.gif_preview_label.setMinimumHeight(140)
+        self.gif_preview_label.setMinimumHeight(120)
+        self.gif_preview_label.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
 
         preview_controls = QHBoxLayout()
@@ -419,9 +429,18 @@ class MainWindow(QMainWindow):
         gif_preview_group = self.create_gif_preview_panel()
         export_group = self.create_export_panel()
 
-        root_layout.addWidget(video_preview_group, stretch=1)
-        root_layout.addWidget(gif_preview_group)
-        root_layout.addWidget(export_group)
+        self.preview_splitter = QSplitter(Qt.Vertical)
+        self.preview_splitter.setObjectName("preview_splitter")
+        self.preview_splitter.setChildrenCollapsible(False)
+        self.preview_splitter.addWidget(video_preview_group)
+        self.preview_splitter.addWidget(gif_preview_group)
+        self.preview_splitter.addWidget(export_group)
+        self.preview_splitter.setSizes([260, 180, 210])
+        self.preview_splitter.setStretchFactor(0, 1)
+        self.preview_splitter.setStretchFactor(1, 1)
+        self.preview_splitter.setStretchFactor(2, 0)
+
+        root_layout.addWidget(self.preview_splitter, stretch=1)
 
         self.setCentralWidget(central)
 
