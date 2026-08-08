@@ -6,8 +6,8 @@ import tempfile
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie, QPainter
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
+    QStyle,
+    QStyleOptionSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -30,14 +32,199 @@ from gifmaker.services.gif_export import GifExportError, export_gif
 from gifmaker.video.probe import VideoProbeError, probe_video
 
 
+class MarkerSeekSlider(QSlider):
+    """Seek slider with draggable start/end frame markers and shaded selection."""
+
+    selectionChanged = Signal(int, int)
+
+    def __init__(
+        self, orientation: Qt.Orientation, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(orientation, parent)
+        self._total_frames = 0
+        self._start_frame = 0
+        self._end_frame = 0
+        self._min_gap_frames = 2
+        self._dragging_marker: str | None = None
+        self._marker_hit_radius = 8
+
+    def set_total_frames(self, total_frames: int) -> None:
+        """Set total frame count and ensure marker bounds remain valid."""
+        self._total_frames = max(total_frames, 0)
+        if self._total_frames <= 0:
+            self._start_frame = 0
+            self._end_frame = 0
+            self.update()
+            return
+
+        self.set_selection(self._start_frame, self._end_frame, emit_signal=False)
+
+    def set_selection(
+        self, start_frame: int, end_frame: int, *, emit_signal: bool = True
+    ) -> None:
+        """Set marker selection while enforcing ordering and minimum gap."""
+        if self._total_frames <= 0:
+            return
+
+        max_frame = self._total_frames - 1
+        min_end = min(max_frame, self._min_gap_frames)
+        clamped_start = max(
+            0, min(start_frame, max(0, max_frame - self._min_gap_frames))
+        )
+        clamped_end = max(min_end, min(end_frame, max_frame))
+
+        if clamped_end - clamped_start < self._min_gap_frames:
+            if self._dragging_marker == "start":
+                clamped_start = max(0, clamped_end - self._min_gap_frames)
+            else:
+                clamped_end = min(max_frame, clamped_start + self._min_gap_frames)
+
+        if clamped_end - clamped_start < self._min_gap_frames:
+            clamped_start = 0
+            clamped_end = min(max_frame, max(self._min_gap_frames, 0))
+
+        changed = clamped_start != self._start_frame or clamped_end != self._end_frame
+        self._start_frame = clamped_start
+        self._end_frame = clamped_end
+        self.update()
+
+        if changed and emit_signal:
+            self.selectionChanged.emit(self._start_frame, self._end_frame)
+
+    def selection(self) -> tuple[int, int]:
+        """Return current start/end frame selection."""
+        return self._start_frame, self._end_frame
+
+    def nudge_start(self, delta: int) -> None:
+        """Move start marker by delta frames with clamped bounds."""
+        self._dragging_marker = "start"
+        self.set_selection(self._start_frame + delta, self._end_frame)
+        self._dragging_marker = None
+
+    def nudge_end(self, delta: int) -> None:
+        """Move end marker by delta frames with clamped bounds."""
+        self._dragging_marker = "end"
+        self.set_selection(self._start_frame, self._end_frame + delta)
+        self._dragging_marker = None
+
+    def _groove_rect(self) -> tuple[int, int, int]:
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        groove = self.style().subControlRect(
+            QStyle.CC_Slider,
+            option,
+            QStyle.SC_SliderGroove,
+            self,
+        )
+        left = groove.left()
+        right = groove.right()
+        width = max(1, right - left)
+        return left, right, width
+
+    def _frame_to_x(self, frame: int) -> int:
+        if self._total_frames <= 1:
+            left, _, _ = self._groove_rect()
+            return left
+
+        left, _, width = self._groove_rect()
+        ratio = frame / (self._total_frames - 1)
+        return left + round(ratio * width)
+
+    def _x_to_frame(self, x_pos: int) -> int:
+        if self._total_frames <= 1:
+            return 0
+
+        left, right, width = self._groove_rect()
+        clamped_x = max(left, min(x_pos, right))
+        ratio = (clamped_x - left) / width
+        return round(ratio * (self._total_frames - 1))
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        super().paintEvent(event)
+        if self._total_frames <= 0:
+            return
+
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        groove = self.style().subControlRect(
+            QStyle.CC_Slider,
+            option,
+            QStyle.SC_SliderGroove,
+            self,
+        )
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+
+        start_x = self._frame_to_x(self._start_frame)
+        end_x = self._frame_to_x(self._end_frame)
+
+        if end_x > start_x:
+            selection_color = self.palette().highlight().color()
+            selection_color.setAlpha(90)
+            painter.fillRect(
+                start_x, groove.top(), end_x - start_x, groove.height(), selection_color
+            )
+
+        marker_color = self.palette().highlight().color()
+        painter.setPen(marker_color)
+        painter.drawLine(start_x, groove.top() - 4, start_x, groove.bottom() + 4)
+        painter.drawLine(end_x, groove.top() - 4, end_x, groove.bottom() + 4)
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() != Qt.LeftButton or self._total_frames <= 0:
+            super().mousePressEvent(event)
+            return
+
+        press_x = event.position().toPoint().x()
+        start_x = self._frame_to_x(self._start_frame)
+        end_x = self._frame_to_x(self._end_frame)
+        start_dist = abs(press_x - start_x)
+        end_dist = abs(press_x - end_x)
+
+        if min(start_dist, end_dist) <= self._marker_hit_radius:
+            self._dragging_marker = "start" if start_dist <= end_dist else "end"
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        if self._dragging_marker is None:
+            super().mouseMoveEvent(event)
+            return
+
+        frame = self._x_to_frame(event.position().toPoint().x())
+        if self._dragging_marker == "start":
+            self.set_selection(frame, self._end_frame)
+        else:
+            self.set_selection(self._start_frame, frame)
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        if self._dragging_marker is None:
+            super().mouseReleaseEvent(event)
+            return
+
+        self._dragging_marker = None
+        event.accept()
+
+
 class MainWindow(QMainWindow):
     """Primary window scaffold for video/GIF import and export workflows."""
+
+    selection_changed = Signal(int, int)
 
     def __init__(self) -> None:
         super().__init__()
         self.current_video_path: str | None = None
         self.clip_start_time: float | None = None
         self.clip_end_time: float | None = None
+        self.start_frame: int = 0
+        self.end_frame: int = 0
+        self.total_frames: int = 0
+        self.current_video_fps: float = 24.0
+        self.minimum_selection_gap_frames: int = 2
         self._is_seek_dragging = False
         self._pending_video_path: str | None = None
         self._pending_video_info: VideoInfo | None = None
@@ -95,11 +282,13 @@ class MainWindow(QMainWindow):
         self.set_end_button = QPushButton("Set End")
         self.set_end_button.clicked.connect(self.set_clip_end)
 
-        self.seek_slider = QSlider(Qt.Horizontal)
+        self.seek_slider = MarkerSeekSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 0)
+        self.seek_slider.set_total_frames(0)
         self.seek_slider.sliderPressed.connect(self.on_seek_slider_pressed)
         self.seek_slider.sliderMoved.connect(self.on_seek_slider_moved)
         self.seek_slider.sliderReleased.connect(self.on_seek_slider_released)
+        self.seek_slider.selectionChanged.connect(self.on_scrub_selection_changed)
 
         self.seek_time_label = QLabel("00:00:00 / 00:00:00")
 
@@ -110,11 +299,37 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self.seek_slider, stretch=1)
         controls_layout.addWidget(self.seek_time_label)
 
+        marker_controls = QHBoxLayout()
+
+        self.start_frame_label = QLabel("Start: --:--:--.---")
+        self.start_nudge_back_button = QPushButton("-1")
+        self.start_nudge_back_button.clicked.connect(lambda: self.nudge_start_frame(-1))
+        self.start_nudge_forward_button = QPushButton("+1")
+        self.start_nudge_forward_button.clicked.connect(
+            lambda: self.nudge_start_frame(1)
+        )
+
+        self.end_frame_label = QLabel("End: --:--:--.---")
+        self.end_nudge_back_button = QPushButton("-1")
+        self.end_nudge_back_button.clicked.connect(lambda: self.nudge_end_frame(-1))
+        self.end_nudge_forward_button = QPushButton("+1")
+        self.end_nudge_forward_button.clicked.connect(lambda: self.nudge_end_frame(1))
+
+        marker_controls.addWidget(self.start_frame_label)
+        marker_controls.addWidget(self.start_nudge_back_button)
+        marker_controls.addWidget(self.start_nudge_forward_button)
+        marker_controls.addSpacing(12)
+        marker_controls.addWidget(self.end_frame_label)
+        marker_controls.addWidget(self.end_nudge_back_button)
+        marker_controls.addWidget(self.end_nudge_forward_button)
+        marker_controls.addStretch(1)
+
         self.clip_selection_label = QLabel()
         self.update_clip_selection_display()
 
         layout.addWidget(self.video_widget)
         layout.addLayout(controls_layout)
+        layout.addLayout(marker_controls)
         layout.addWidget(self.clip_selection_label)
         return group
 
@@ -326,14 +541,12 @@ class MainWindow(QMainWindow):
         if self.media_player.source().isEmpty():
             return
         self.media_player.play()
-        logger.info("Playback started.")
 
     def pause_preview(self) -> None:
         """Pause preview playback."""
         if self.media_player.source().isEmpty():
             return
         self.media_player.pause()
-        logger.info("Playback paused.")
 
     def on_seek_slider_pressed(self) -> None:
         """Mark that the user is actively dragging the seek handle."""
@@ -352,13 +565,24 @@ class MainWindow(QMainWindow):
 
     def on_duration_changed(self, duration: int) -> None:
         """Sync the seek range with loaded media duration."""
-        self.seek_slider.setRange(0, max(duration, 0))
+        self.total_frames = self._duration_to_frame_count(duration)
+        seek_max = max(self.total_frames - 1, 0)
+        self.seek_slider.setRange(0, seek_max)
+        self.seek_slider.set_total_frames(self.total_frames)
+
+        if self.total_frames > 0:
+            default_end = max(self.minimum_selection_gap_frames, self.total_frames - 1)
+            self.seek_slider.set_selection(0, default_end, emit_signal=False)
+            self.on_scrub_selection_changed(0, default_end)
+        else:
+            self.on_scrub_selection_changed(0, 0)
+
         self._update_seek_time_label()
 
     def on_position_changed(self, position: int) -> None:
         """Sync the seek slider with the current playback position."""
         if not self._is_seek_dragging:
-            self.seek_slider.setValue(position)
+            self.seek_slider.setValue(self._ms_to_frame(position))
             self._update_seek_time_label(current_ms=position)
 
     def on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
@@ -374,6 +598,7 @@ class MainWindow(QMainWindow):
             self.media_player.pause()
             self.reset_clip_selection()
             self._clear_preview_state(remove_temp_file=True)
+            self.current_video_fps = max(self._pending_video_info.fps, 1.0)
             self.update_video_info_from_model(
                 self._pending_video_path,
                 self._pending_video_info,
@@ -429,9 +654,17 @@ class MainWindow(QMainWindow):
 
     def reset_clip_selection(self) -> None:
         """Reset the currently selected clip range."""
-        self.clip_start_time = None
-        self.clip_end_time = None
-        self.update_clip_selection_display()
+        if self.total_frames <= 0:
+            self.start_frame = 0
+            self.end_frame = 0
+            self.clip_start_time = None
+            self.clip_end_time = None
+            self.update_clip_selection_display()
+            return
+
+        default_end = max(self.minimum_selection_gap_frames, self.total_frames - 1)
+        self.seek_slider.set_selection(0, default_end, emit_signal=False)
+        self.on_scrub_selection_changed(0, default_end)
 
     def set_clip_start(self) -> None:
         """Store the current preview position as clip start."""
@@ -440,9 +673,9 @@ class MainWindow(QMainWindow):
             logger.error("Cannot set clip start without a loaded video.")
             return
 
-        self.clip_start_time = self.media_player.position() / 1000.0
-        logger.info("Clip start set at {:.2f}s", self.clip_start_time)
-        self.update_clip_selection_display()
+        current_frame = self._ms_to_frame(self.media_player.position())
+        self.seek_slider.set_selection(current_frame, self.end_frame)
+        logger.info("Clip start set at frame {}", current_frame)
 
     def set_clip_end(self) -> None:
         """Store the current preview position as clip end."""
@@ -451,43 +684,94 @@ class MainWindow(QMainWindow):
             logger.error("Cannot set clip end without a loaded video.")
             return
 
-        new_end_time = self.media_player.position() / 1000.0
-        if self.clip_start_time is not None and new_end_time < self.clip_start_time:
-            self.export_status_label.setText(
-                "Status: End time must be after selected start time."
-            )
-            logger.error(
-                "Rejected clip end {:.2f}s before clip start {:.2f}s",
-                new_end_time,
-                self.clip_start_time,
-            )
-            return
+        current_frame = self._ms_to_frame(self.media_player.position())
+        self.seek_slider.set_selection(self.start_frame, current_frame)
+        logger.info("Clip end set at frame {}", current_frame)
 
-        self.clip_end_time = new_end_time
-        logger.info("Clip end set at {:.2f}s", self.clip_end_time)
+    def nudge_start_frame(self, delta: int) -> None:
+        """Nudge the start marker by one frame in either direction."""
+        if self.total_frames <= 0:
+            return
+        self.seek_slider.nudge_start(delta)
+
+    def nudge_end_frame(self, delta: int) -> None:
+        """Nudge the end marker by one frame in either direction."""
+        if self.total_frames <= 0:
+            return
+        self.seek_slider.nudge_end(delta)
+
+    def on_scrub_selection_changed(self, start_frame: int, end_frame: int) -> None:
+        """Sync frame model, labels, and selection signal from slider markers."""
+        self.start_frame = start_frame
+        self.end_frame = end_frame
+
+        if self.total_frames > 0:
+            self.clip_start_time = self.start_frame / self.current_video_fps
+            self.clip_end_time = self.end_frame / self.current_video_fps
+        else:
+            self.clip_start_time = None
+            self.clip_end_time = None
+
         self.update_clip_selection_display()
+        self.selection_changed.emit(self.start_frame, self.end_frame)
 
     def update_clip_selection_display(self) -> None:
         """Refresh the clip selection summary shown in the preview panel."""
-        if self.clip_start_time is None or self.clip_end_time is None:
+        if (
+            self.total_frames <= 0
+            or self.clip_start_time is None
+            or self.clip_end_time is None
+        ):
+            self.start_frame_label.setText("Start: --:--:--.---")
+            self.end_frame_label.setText("End: --:--:--.---")
             self.clip_selection_label.setText("Selection:\nNot selected")
             return
 
-        start_text = self._format_ms(round(self.clip_start_time * 1000))
-        end_text = self._format_ms(round(self.clip_end_time * 1000))
+        start_text = self._format_timestamp_from_frame(self.start_frame)
+        end_text = self._format_timestamp_from_frame(self.end_frame)
         duration = self.clip_end_time - self.clip_start_time
+        self.start_frame_label.setText(f"Start: {start_text}")
+        self.end_frame_label.setText(f"End: {end_text}")
         self.clip_selection_label.setText(
-            f"Selection:\n{start_text} -> {end_text}\nDuration:\n{duration:.2f}s"
+            f"Selection:\n{start_text} -> {end_text}\nDuration:\n{duration:.3f}s"
         )
 
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
         if current_ms is None:
-            current_ms = self.media_player.position()
-        total_ms = max(self.media_player.duration(), 0)
+            current_ms = self._frame_to_ms(self.seek_slider.value())
+        total_ms = self._frame_to_ms(max(self.total_frames - 1, 0))
         self.seek_time_label.setText(
             f"{self._format_ms(current_ms)} / {self._format_ms(total_ms)}"
         )
+
+    def _duration_to_frame_count(self, duration_ms: int) -> int:
+        """Convert media duration to total frame count."""
+        if duration_ms <= 0 or self.current_video_fps <= 0:
+            return 0
+        duration_seconds = duration_ms / 1000.0
+        return max(1, round(duration_seconds * self.current_video_fps))
+
+    def _ms_to_frame(self, milliseconds: int) -> int:
+        """Convert milliseconds to nearest frame index."""
+        if self.total_frames <= 0 or self.current_video_fps <= 0:
+            return 0
+        frame = round((milliseconds / 1000.0) * self.current_video_fps)
+        return max(0, min(frame, self.total_frames - 1))
+
+    def _frame_to_ms(self, frame_index: int) -> int:
+        """Convert frame index to milliseconds."""
+        if self.current_video_fps <= 0:
+            return 0
+        return round((frame_index / self.current_video_fps) * 1000.0)
+
+    def _format_timestamp_from_frame(self, frame_index: int) -> str:
+        """Format a frame index as HH:MM:SS.mmm."""
+        total_ms = self._frame_to_ms(frame_index)
+        total_seconds, milliseconds = divmod(max(total_ms, 0), 1000)
+        hours, remaining = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remaining, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
     def _format_ms(self, milliseconds: int) -> str:
         """Format milliseconds as MM:SS:CC or HH:MM:SS:CC."""
