@@ -576,20 +576,22 @@ class MainWindow(QMainWindow):
         """Convert seconds to a frame delta using the current preview FPS."""
         if self.current_video_fps <= 0:
             return 0
-        return max(1, int(round(seconds * self.current_video_fps)))
+        return max(1, round(seconds * self.current_video_fps))
 
     def on_seek_slider_pressed(self) -> None:
         """Mark that the user is actively dragging the seek handle."""
         self._is_seek_dragging = True
 
     def on_seek_slider_moved(self, position: int) -> None:
-        """Update the displayed time while dragging without seeking yet."""
-        self._update_seek_time_label(current_ms=position)
+        """Seek the media player while dragging and update the displayed time."""
+        target_position = self._frame_to_ms(position)
+        self.media_player.setPosition(target_position)
+        self._update_seek_time_label(current_ms=target_position)
 
     def on_seek_slider_released(self) -> None:
-        """Seek once when the user releases the slider handle."""
+        """Finalize the seek position when the user releases the slider handle."""
         self._is_seek_dragging = False
-        target_position = self.seek_slider.value()
+        target_position = self._frame_to_ms(self.seek_slider.value())
         self.media_player.setPosition(target_position)
         self._update_seek_time_label(current_ms=target_position)
 
