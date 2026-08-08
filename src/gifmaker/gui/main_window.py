@@ -272,13 +272,11 @@ class MainWindow(QMainWindow):
         self.media_player.errorOccurred.connect(self.on_media_error)
         self.media_player.durationChanged.connect(self.on_duration_changed)
         self.media_player.positionChanged.connect(self.on_position_changed)
+        self.media_player.playbackStateChanged.connect(self._update_play_button_state)
 
         controls_layout = QHBoxLayout()
-        self.play_button = QPushButton("Play")
-        self.play_button.clicked.connect(self.play_preview)
-
-        self.pause_button = QPushButton("Pause")
-        self.pause_button.clicked.connect(self.pause_preview)
+        self.play_button = QPushButton("▶ Play")
+        self.play_button.clicked.connect(self.toggle_preview_playback)
 
         self.set_start_button = QPushButton("Set Start")
         self.set_start_button.clicked.connect(self.set_clip_start)
@@ -297,7 +295,6 @@ class MainWindow(QMainWindow):
         self.seek_time_label = QLabel("00:00:00 / 00:00:00")
 
         controls_layout.addWidget(self.play_button)
-        controls_layout.addWidget(self.pause_button)
         controls_layout.addWidget(self.set_start_button)
         controls_layout.addWidget(self.set_end_button)
         controls_layout.addWidget(self.seek_slider, stretch=1)
@@ -306,18 +303,24 @@ class MainWindow(QMainWindow):
         marker_controls = QHBoxLayout()
 
         self.start_frame_label = QLabel("Start: --:--:--.---")
-        self.start_nudge_back_button = QPushButton("-1")
-        self.start_nudge_back_button.clicked.connect(lambda: self.nudge_start_frame(-1))
-        self.start_nudge_forward_button = QPushButton("+1")
+        self.start_nudge_back_button = QPushButton("−0.01")
+        self.start_nudge_back_button.clicked.connect(
+            lambda: self.nudge_start_frame(-self._seconds_to_frame(0.01))
+        )
+        self.start_nudge_forward_button = QPushButton("+0.01")
         self.start_nudge_forward_button.clicked.connect(
-            lambda: self.nudge_start_frame(1)
+            lambda: self.nudge_start_frame(self._seconds_to_frame(0.01))
         )
 
         self.end_frame_label = QLabel("End: --:--:--.---")
-        self.end_nudge_back_button = QPushButton("-1")
-        self.end_nudge_back_button.clicked.connect(lambda: self.nudge_end_frame(-1))
-        self.end_nudge_forward_button = QPushButton("+1")
-        self.end_nudge_forward_button.clicked.connect(lambda: self.nudge_end_frame(1))
+        self.end_nudge_back_button = QPushButton("−0.01")
+        self.end_nudge_back_button.clicked.connect(
+            lambda: self.nudge_end_frame(-self._seconds_to_frame(0.01))
+        )
+        self.end_nudge_forward_button = QPushButton("+0.01")
+        self.end_nudge_forward_button.clicked.connect(
+            lambda: self.nudge_end_frame(self._seconds_to_frame(0.01))
+        )
 
         marker_controls.addWidget(self.start_frame_label)
         marker_controls.addWidget(self.start_nudge_back_button)
@@ -330,6 +333,8 @@ class MainWindow(QMainWindow):
 
         self.clip_selection_label = QLabel()
         self.update_clip_selection_display()
+
+        self._update_play_button_state()
 
         layout.addWidget(self.video_widget)
         layout.addLayout(controls_layout)
@@ -555,17 +560,23 @@ class MainWindow(QMainWindow):
             codec=video_info.codec,
         )
 
-    def play_preview(self) -> None:
-        """Start preview playback."""
+    def toggle_preview_playback(self) -> None:
+        """Toggle preview playback between play and pause."""
         if self.media_player.source().isEmpty():
             return
-        self.media_player.play()
 
-    def pause_preview(self) -> None:
-        """Pause preview playback."""
-        if self.media_player.source().isEmpty():
-            return
-        self.media_player.pause()
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+        else:
+            self.media_player.play()
+
+        self._update_play_button_state()
+
+    def _seconds_to_frame(self, seconds: float) -> int:
+        """Convert seconds to a frame delta using the current preview FPS."""
+        if self.current_video_fps <= 0:
+            return 0
+        return max(1, int(round(seconds * self.current_video_fps)))
 
     def on_seek_slider_pressed(self) -> None:
         """Mark that the user is actively dragging the seek handle."""
@@ -603,6 +614,7 @@ class MainWindow(QMainWindow):
         if not self._is_seek_dragging:
             self.seek_slider.setValue(self._ms_to_frame(position))
             self._update_seek_time_label(current_ms=position)
+        self._update_play_button_state()
 
     def on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         """Handle media load lifecycle events for preview updates."""
@@ -624,6 +636,7 @@ class MainWindow(QMainWindow):
             )
             logger.info("Video loaded successfully.")
             self._clear_pending_preview_state()
+            self._update_play_button_state()
 
         if status == QMediaPlayer.MediaStatus.InvalidMedia:
             self.handle_preview_load_failure()
@@ -719,6 +732,17 @@ class MainWindow(QMainWindow):
             return
         self.seek_slider.nudge_end(delta)
 
+    def _update_play_button_state(self, _state=None) -> None:
+        """Keep the play button text aligned with playback state."""
+        if self.media_player.source().isEmpty():
+            self.play_button.setText("▶ Play")
+            return
+
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_button.setText("⏸ Pause")
+        else:
+            self.play_button.setText("▶ Play")
+
     def on_scrub_selection_changed(self, start_frame: int, end_frame: int) -> None:
         """Sync frame model, labels, and selection signal from slider markers."""
         self.start_frame = start_frame
@@ -749,11 +773,9 @@ class MainWindow(QMainWindow):
         start_text = self._format_timestamp_from_frame(self.start_frame)
         end_text = self._format_timestamp_from_frame(self.end_frame)
         duration = self.clip_end_time - self.clip_start_time
-        self.start_frame_label.setText(f"Start: {start_text}")
-        self.end_frame_label.setText(f"End: {end_text}")
-        self.clip_selection_label.setText(
-            f"Selection:\n{start_text} -> {end_text}\nDuration:\n{duration:.3f}s"
-        )
+        self.start_frame_label.setText(f"Start {start_text}")
+        self.end_frame_label.setText(f"End {end_text}")
+        self.clip_selection_label.setText(f"Duration: {duration:.3f}s")
 
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
