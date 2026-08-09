@@ -12,7 +12,6 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QFileDialog,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -232,7 +231,10 @@ class MainWindow(QMainWindow):
         self._pending_video_info: VideoInfo | None = None
         self._previous_video_path: str | None = None
         self._previous_source: QUrl | None = None
-        self._previous_info_texts: dict[str, str] = {}
+        self._previous_file_info_text: str = "No file loaded"
+        self._previous_meta_info_text: str = (
+            "Duration: - | Resolution: - | FPS: - | Codec: -"
+        )
         self._restoring_previous_source = False
         self._preview_temp_file: Path | None = None
         self._preview_movie: QMovie | None = None
@@ -342,52 +344,83 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.clip_selection_label)
         return group
 
-    def create_export_panel(self) -> QGroupBox:
-        """Create export settings with placeholder controls."""
-        group = QGroupBox("Export")
-        group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        group.setMinimumHeight(190)
-
-        root_layout = QVBoxLayout(group)
-        form_layout = QFormLayout()
+    def create_export_controls_row(self) -> QWidget:
+        """Create compact, single-row precision and render settings controls."""
+        row = QWidget(self)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.export_start_input = QLineEdit()
-        self.export_start_input.setPlaceholderText("e.g. 00:00:00")
+        self.export_start_input.setPlaceholderText("MM:SS:CC")
+        self.export_start_input.setFixedWidth(92)
+        self.export_start_input.editingFinished.connect(self.on_export_start_adjusted)
 
         self.export_end_input = QLineEdit()
-        self.export_end_input.setPlaceholderText("e.g. 00:05:00")
+        self.export_end_input.setPlaceholderText("MM:SS:CC")
+        self.export_end_input.setFixedWidth(92)
+        self.export_end_input.editingFinished.connect(self.on_export_end_adjusted)
 
         self.export_fps_input = QSpinBox()
         self.export_fps_input.setRange(1, 120)
         self.export_fps_input.setValue(24)
+        self.export_fps_input.setFixedWidth(78)
 
         self.export_width_input = QSpinBox()
         self.export_width_input.setRange(1, 8192)
         self.export_width_input.setValue(640)
+        self.export_width_input.setFixedWidth(92)
 
-        form_layout.addRow("Start", self.export_start_input)
-        form_layout.addRow("End", self.export_end_input)
-        form_layout.addRow("FPS", self.export_fps_input)
-        form_layout.addRow("Width", self.export_width_input)
-
-        button_row = QHBoxLayout()
-        button_row.addStretch(1)
         self.generate_preview_button = QPushButton("Generate Preview")
         self.generate_preview_button.clicked.connect(self.generate_gif_preview)
+
+        layout.addWidget(QLabel("Start"))
+        layout.addWidget(self.export_start_input)
+        layout.addWidget(QLabel("End"))
+        layout.addWidget(self.export_end_input)
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("FPS"))
+        layout.addWidget(self.export_fps_input)
+        layout.addWidget(QLabel("Width"))
+        layout.addWidget(self.export_width_input)
+        layout.addStretch(1)
+        layout.addWidget(self.generate_preview_button)
+
+        return row
+
+    def create_bottom_toolbar(self) -> QWidget:
+        """Create a slim bottom toolbar for compact file info and exporting."""
+        toolbar = QWidget(self)
+        layout = QHBoxLayout(toolbar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        info_column = QVBoxLayout()
+        info_column.setContentsMargins(0, 0, 0, 0)
+        info_column.setSpacing(2)
+
+        self.video_file_label = QLabel("No file loaded")
+        self.video_meta_label = QLabel(
+            "Duration: - | Resolution: - | FPS: - | Codec: -"
+        )
+        self.export_status_label = QLabel("Status: -")
+
+        info_row = QHBoxLayout()
+        info_row.setContentsMargins(0, 0, 0, 0)
+        info_row.setSpacing(12)
+        info_row.addWidget(self.video_meta_label)
+        info_row.addWidget(self.export_status_label)
+        info_row.addStretch(1)
+
+        info_column.addWidget(self.video_file_label)
+        info_column.addLayout(info_row)
 
         self.export_button = QPushButton("Export")
         self.export_button.clicked.connect(self.export_gif_from_selection)
 
-        button_row.addWidget(self.generate_preview_button)
-        button_row.addWidget(self.export_button)
+        layout.addLayout(info_column, stretch=1)
+        layout.addWidget(self.export_button)
 
-        self.export_status_label = QLabel("Status: -")
-
-        root_layout.addLayout(form_layout)
-        root_layout.addLayout(button_row)
-        root_layout.addWidget(self.export_status_label)
-
-        return group
+        return toolbar
 
     def create_gif_preview_panel(self) -> QGroupBox:
         """Create the GIF preview panel shown below the video player."""
@@ -427,25 +460,21 @@ class MainWindow(QMainWindow):
         open_button.clicked.connect(self.open_file_dialog)
         root_layout.addWidget(open_button)
 
-        video_info_group = self.create_video_info_panel()
-        root_layout.addWidget(video_info_group)
-
         video_preview_group = self.create_preview_panel()
         gif_preview_group = self.create_gif_preview_panel()
-        export_group = self.create_export_panel()
 
         self.preview_splitter = QSplitter(Qt.Vertical)
         self.preview_splitter.setObjectName("preview_splitter")
         self.preview_splitter.setChildrenCollapsible(False)
         self.preview_splitter.addWidget(video_preview_group)
         self.preview_splitter.addWidget(gif_preview_group)
-        self.preview_splitter.addWidget(export_group)
-        self.preview_splitter.setSizes([260, 180, 210])
+        self.preview_splitter.setSizes([330, 220])
         self.preview_splitter.setStretchFactor(0, 1)
         self.preview_splitter.setStretchFactor(1, 1)
-        self.preview_splitter.setStretchFactor(2, 0)
 
         root_layout.addWidget(self.preview_splitter, stretch=1)
+        root_layout.addWidget(self.create_export_controls_row())
+        root_layout.addWidget(self.create_bottom_toolbar())
 
         self.setCentralWidget(central)
 
@@ -463,24 +492,6 @@ class MainWindow(QMainWindow):
         self.setMaximumSize(available.width(), available.height())
         self.resize(target_width, target_height)
 
-    def create_video_info_panel(self) -> QGroupBox:
-        """Create a panel to display video metadata."""
-        group = QGroupBox("Video Information")
-        layout = QFormLayout(group)
-
-        self.video_info_labels: dict[str, QLabel] = {
-            "File": QLabel("-"),
-            "Duration": QLabel("-"),
-            "Resolution": QLabel("-"),
-            "FPS": QLabel("-"),
-            "Codec": QLabel("-"),
-        }
-
-        for label, widget in self.video_info_labels.items():
-            layout.addRow(label, widget)
-
-        return group
-
     def update_video_info(
         self,
         file_path: str,
@@ -491,12 +502,11 @@ class MainWindow(QMainWindow):
         fps: float,
         codec: str,
     ) -> None:
-        """Update the video information panel with probed metadata."""
-        self.video_info_labels["File"].setText(file_path)
-        self.video_info_labels["Duration"].setText(f"{duration:.2f} s")
-        self.video_info_labels["Resolution"].setText(f"{width}x{height}")
-        self.video_info_labels["FPS"].setText(f"{fps:.2f}")
-        self.video_info_labels["Codec"].setText(codec)
+        """Update compact video metadata shown in the bottom toolbar."""
+        self.video_file_label.setText(file_path)
+        self.video_meta_label.setText(
+            f"Duration: {duration:.2f}s | Resolution: {width}x{height} | FPS: {fps:.2f} | Codec: {codec}"
+        )
 
     def open_file_dialog(self) -> None:
         """Open a file dialog to select a video file."""
@@ -540,9 +550,8 @@ class MainWindow(QMainWindow):
         self._pending_video_info = video_info
         self._previous_video_path = previous_video_path
         self._previous_source = self.media_player.source()
-        self._previous_info_texts = {
-            key: label.text() for key, label in self.video_info_labels.items()
-        }
+        self._previous_file_info_text = self.video_file_label.text()
+        self._previous_meta_info_text = self.video_meta_label.text()
 
         self.media_player.stop()
         self.media_player.setSource(QUrl.fromLocalFile(file_path))
@@ -658,10 +667,8 @@ class MainWindow(QMainWindow):
 
         logger.error("Failed to load preview.")
         self.current_video_path = self._previous_video_path
-
-        if self._previous_info_texts:
-            for key, value in self._previous_info_texts.items():
-                self.video_info_labels[key].setText(value)
+        self.video_file_label.setText(self._previous_file_info_text)
+        self.video_meta_label.setText(self._previous_meta_info_text)
 
         if self._previous_source is not None and not self._previous_source.isEmpty():
             self._restoring_previous_source = True
@@ -684,7 +691,10 @@ class MainWindow(QMainWindow):
         self._pending_video_info = None
         self._previous_video_path = None
         self._previous_source = None
-        self._previous_info_texts = {}
+        self._previous_file_info_text = "No file loaded"
+        self._previous_meta_info_text = (
+            "Duration: - | Resolution: - | FPS: - | Codec: -"
+        )
 
     def reset_clip_selection(self) -> None:
         """Reset the currently selected clip range."""
@@ -770,6 +780,11 @@ class MainWindow(QMainWindow):
             self.start_frame_label.setText("Start: --:--:--.---")
             self.end_frame_label.setText("End: --:--:--.---")
             self.clip_selection_label.setText("Selection:\nNot selected")
+            if hasattr(self, "export_start_input") and hasattr(
+                self, "export_end_input"
+            ):
+                self.export_start_input.setText("")
+                self.export_end_input.setText("")
             return
 
         start_text = self._format_timestamp_from_frame(self.start_frame)
@@ -778,6 +793,51 @@ class MainWindow(QMainWindow):
         self.start_frame_label.setText(f"Start {start_text}")
         self.end_frame_label.setText(f"End {end_text}")
         self.clip_selection_label.setText(f"Duration: {duration:.3f}s")
+
+        # Keep precision inputs synced to timeline markers for fine adjustments.
+        if hasattr(self, "export_start_input") and hasattr(self, "export_end_input"):
+            self.export_start_input.setText(
+                self._format_ms(self._frame_to_ms(self.start_frame))
+            )
+            self.export_end_input.setText(
+                self._format_ms(self._frame_to_ms(self.end_frame))
+            )
+
+    def on_export_start_adjusted(self) -> None:
+        """Allow precise start adjustments while preserving timeline as source of truth."""
+        if self.total_frames <= 0 or not self.export_start_input.text().strip():
+            return
+
+        try:
+            start_seconds = self._parse_time_input(
+                self.export_start_input.text().strip()
+            )
+        except ValueError as exc:
+            self.export_status_label.setText(f"Status: {exc}")
+            self.export_start_input.setText(
+                self._format_ms(self._frame_to_ms(self.start_frame))
+            )
+            return
+
+        start_frame = self._ms_to_frame(round(start_seconds * 1000.0))
+        self.seek_slider.set_selection(start_frame, self.end_frame)
+
+    def on_export_end_adjusted(self) -> None:
+        """Allow precise end adjustments while preserving timeline as source of truth."""
+        if self.total_frames <= 0 or not self.export_end_input.text().strip():
+            return
+
+        try:
+            end_seconds = self._parse_time_input(self.export_end_input.text().strip())
+        except ValueError as exc:
+            self.export_status_label.setText(f"Status: {exc}")
+            self.export_end_input.setText(
+                self._format_ms(self._frame_to_ms(self.end_frame))
+            )
+            return
+
+        end_frame = self._ms_to_frame(round(end_seconds * 1000.0))
+        self.seek_slider.set_selection(self.start_frame, end_frame)
 
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
@@ -973,27 +1033,17 @@ class MainWindow(QMainWindow):
         self._preview_movie.setPaused(True)
 
     def _resolve_render_settings(self) -> dict[str, float | int]:
-        """Resolve start/end/fps/width from clip selection or export controls."""
-        if self.clip_start_time is not None and self.clip_end_time is not None:
-            start_seconds = self.clip_start_time
-            end_seconds = self.clip_end_time
-            logger.info(
-                "Using selected clip range for render: {:.2f}s to {:.2f}s",
-                start_seconds,
-                end_seconds,
-            )
-        else:
-            start_seconds = self._parse_time_input(
-                self.export_start_input.text().strip() or "0"
-            )
-            end_text = self.export_end_input.text().strip()
-            if not end_text:
-                duration_ms = self.media_player.duration()
-                if duration_ms <= 0:
-                    raise ValueError("End time is required before export")
-                end_seconds = duration_ms / 1000.0
-            else:
-                end_seconds = self._parse_time_input(end_text)
+        """Resolve render settings from timeline selection and compact controls."""
+        if self.clip_start_time is None or self.clip_end_time is None:
+            raise ValueError("Select a clip range on the timeline before export")
+
+        start_seconds = self.clip_start_time
+        end_seconds = self.clip_end_time
+        logger.info(
+            "Using selected clip range for render: {:.2f}s to {:.2f}s",
+            start_seconds,
+            end_seconds,
+        )
 
         if end_seconds <= start_seconds:
             raise ValueError("End time must be greater than start time")

@@ -13,13 +13,12 @@ def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
     window = MainWindow()
 
     central_layout = window.centralWidget().layout()
-    resizable_container = central_layout.itemAt(2).widget()
+    resizable_container = central_layout.itemAt(1).widget()
 
     assert isinstance(resizable_container, QSplitter)
-    assert resizable_container.count() == 3
+    assert resizable_container.count() == 2
     assert isinstance(resizable_container.widget(0), QGroupBox)
     assert isinstance(resizable_container.widget(1), QGroupBox)
-    assert isinstance(resizable_container.widget(2), QGroupBox)
 
     app.quit()
 
