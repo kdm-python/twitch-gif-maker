@@ -6,8 +6,8 @@ import tempfile
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie, QPainter
+from PySide6.QtCore import Qt, QUrl, Signal, QSize
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -19,196 +19,16 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSizePolicy,
-    QSlider,
     QSpinBox,
     QSplitter,
-    QStyle,
-    QStyleOptionSlider,
     QVBoxLayout,
     QWidget,
 )
 
+from gifmaker.gui.marker_seek_slider import MarkerSeekSlider
 from gifmaker.models.video_info import VideoInfo
 from gifmaker.services.gif_export import GifExportError, export_gif
 from gifmaker.video.probe import VideoProbeError, probe_video
-
-
-class MarkerSeekSlider(QSlider):
-    """Seek slider with draggable start/end frame markers and shaded selection."""
-
-    selectionChanged = Signal(int, int)
-
-    def __init__(
-        self, orientation: Qt.Orientation, parent: QWidget | None = None
-    ) -> None:
-        super().__init__(orientation, parent)
-        self._total_frames = 0
-        self._start_frame = 0
-        self._end_frame = 0
-        self._min_gap_frames = 2
-        self._dragging_marker: str | None = None
-        self._marker_hit_radius = 8
-
-    def set_total_frames(self, total_frames: int) -> None:
-        """Set total frame count and ensure marker bounds remain valid."""
-        self._total_frames = max(total_frames, 0)
-        if self._total_frames <= 0:
-            self._start_frame = 0
-            self._end_frame = 0
-            self.update()
-            return
-
-        self.set_selection(self._start_frame, self._end_frame, emit_signal=False)
-
-    def set_selection(
-        self, start_frame: int, end_frame: int, *, emit_signal: bool = True
-    ) -> None:
-        """Set marker selection while enforcing ordering and minimum gap."""
-        if self._total_frames <= 0:
-            return
-
-        max_frame = self._total_frames - 1
-        min_end = min(max_frame, self._min_gap_frames)
-        clamped_start = max(
-            0, min(start_frame, max(0, max_frame - self._min_gap_frames))
-        )
-        clamped_end = max(min_end, min(end_frame, max_frame))
-
-        if clamped_end - clamped_start < self._min_gap_frames:
-            if self._dragging_marker == "start":
-                clamped_start = max(0, clamped_end - self._min_gap_frames)
-            else:
-                clamped_end = min(max_frame, clamped_start + self._min_gap_frames)
-
-        if clamped_end - clamped_start < self._min_gap_frames:
-            clamped_start = 0
-            clamped_end = min(max_frame, max(self._min_gap_frames, 0))
-
-        changed = clamped_start != self._start_frame or clamped_end != self._end_frame
-        self._start_frame = clamped_start
-        self._end_frame = clamped_end
-        self.update()
-
-        if changed and emit_signal:
-            self.selectionChanged.emit(self._start_frame, self._end_frame)
-
-    def selection(self) -> tuple[int, int]:
-        """Return current start/end frame selection."""
-        return self._start_frame, self._end_frame
-
-    def nudge_start(self, delta: int) -> None:
-        """Move start marker by delta frames with clamped bounds."""
-        self._dragging_marker = "start"
-        self.set_selection(self._start_frame + delta, self._end_frame)
-        self._dragging_marker = None
-
-    def nudge_end(self, delta: int) -> None:
-        """Move end marker by delta frames with clamped bounds."""
-        self._dragging_marker = "end"
-        self.set_selection(self._start_frame, self._end_frame + delta)
-        self._dragging_marker = None
-
-    def _groove_rect(self) -> tuple[int, int, int]:
-        option = QStyleOptionSlider()
-        self.initStyleOption(option)
-        groove = self.style().subControlRect(
-            QStyle.CC_Slider,
-            option,
-            QStyle.SC_SliderGroove,
-            self,
-        )
-        left = groove.left()
-        right = groove.right()
-        width = max(1, right - left)
-        return left, right, width
-
-    def _frame_to_x(self, frame: int) -> int:
-        if self._total_frames <= 1:
-            left, _, _ = self._groove_rect()
-            return left
-
-        left, _, width = self._groove_rect()
-        ratio = frame / (self._total_frames - 1)
-        return left + round(ratio * width)
-
-    def _x_to_frame(self, x_pos: int) -> int:
-        if self._total_frames <= 1:
-            return 0
-
-        left, right, width = self._groove_rect()
-        clamped_x = max(left, min(x_pos, right))
-        ratio = (clamped_x - left) / width
-        return round(ratio * (self._total_frames - 1))
-
-    def paintEvent(self, event) -> None:  # type: ignore[override]
-        super().paintEvent(event)
-        if self._total_frames <= 0:
-            return
-
-        option = QStyleOptionSlider()
-        self.initStyleOption(option)
-        groove = self.style().subControlRect(
-            QStyle.CC_Slider,
-            option,
-            QStyle.SC_SliderGroove,
-            self,
-        )
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
-
-        start_x = self._frame_to_x(self._start_frame)
-        end_x = self._frame_to_x(self._end_frame)
-
-        if end_x > start_x:
-            selection_color = self.palette().highlight().color()
-            selection_color.setAlpha(90)
-            painter.fillRect(
-                start_x, groove.top(), end_x - start_x, groove.height(), selection_color
-            )
-
-        marker_color = self.palette().highlight().color()
-        painter.setPen(marker_color)
-        painter.drawLine(start_x, groove.top() - 4, start_x, groove.bottom() + 4)
-        painter.drawLine(end_x, groove.top() - 4, end_x, groove.bottom() + 4)
-
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() != Qt.LeftButton or self._total_frames <= 0:
-            super().mousePressEvent(event)
-            return
-
-        press_x = event.position().toPoint().x()
-        start_x = self._frame_to_x(self._start_frame)
-        end_x = self._frame_to_x(self._end_frame)
-        start_dist = abs(press_x - start_x)
-        end_dist = abs(press_x - end_x)
-
-        if min(start_dist, end_dist) <= self._marker_hit_radius:
-            self._dragging_marker = "start" if start_dist <= end_dist else "end"
-            event.accept()
-            return
-
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        if self._dragging_marker is None:
-            super().mouseMoveEvent(event)
-            return
-
-        frame = self._x_to_frame(event.position().toPoint().x())
-        if self._dragging_marker == "start":
-            self.set_selection(frame, self._end_frame)
-        else:
-            self.set_selection(self._start_frame, frame)
-        event.accept()
-
-    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-        if self._dragging_marker is None:
-            super().mouseReleaseEvent(event)
-            return
-
-        self._dragging_marker = None
-        event.accept()
 
 
 class MainWindow(QMainWindow):
@@ -335,13 +155,15 @@ class MainWindow(QMainWindow):
 
         self.clip_selection_label = QLabel()
         self.update_clip_selection_display()
+        # Put duration/selection summary on the same row as the marker nudges
+        marker_controls.addSpacing(12)
+        marker_controls.addWidget(self.clip_selection_label)
 
         self._update_play_button_state()
 
         layout.addWidget(self.video_widget)
         layout.addLayout(controls_layout)
         layout.addLayout(marker_controls)
-        layout.addWidget(self.clip_selection_label)
         return group
 
     def create_export_controls_row(self) -> QWidget:
@@ -373,6 +195,12 @@ class MainWindow(QMainWindow):
         self.generate_preview_button = QPushButton("Generate Preview")
         self.generate_preview_button.clicked.connect(self.generate_gif_preview)
 
+        # GIF preview play/pause controls (placed here to save vertical space)
+        self.gif_preview_play_button = QPushButton("Play")
+        self.gif_preview_play_button.clicked.connect(self.play_gif_preview)
+        self.gif_preview_pause_button = QPushButton("Pause")
+        self.gif_preview_pause_button.clicked.connect(self.pause_gif_preview)
+
         layout.addWidget(QLabel("Start"))
         layout.addWidget(self.export_start_input)
         layout.addWidget(QLabel("End"))
@@ -382,6 +210,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.export_fps_input)
         layout.addWidget(QLabel("Width"))
         layout.addWidget(self.export_width_input)
+        layout.addSpacing(8)
+        layout.addWidget(self.gif_preview_play_button)
+        layout.addWidget(self.gif_preview_pause_button)
         layout.addStretch(1)
         layout.addWidget(self.generate_preview_button)
 
@@ -430,24 +261,14 @@ class MainWindow(QMainWindow):
 
         self.gif_preview_label = QLabel("Generate preview to display GIF")
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
-        self.gif_preview_label.setMinimumHeight(120)
+        # Give the GIF preview a larger minimum height to prioritize it
+        self.gif_preview_label.setMinimumHeight(220)
         self.gif_preview_label.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
-
-        preview_controls = QHBoxLayout()
-        self.gif_preview_play_button = QPushButton("Play")
-        self.gif_preview_play_button.clicked.connect(self.play_gif_preview)
-        self.gif_preview_pause_button = QPushButton("Pause")
-        self.gif_preview_pause_button.clicked.connect(self.pause_gif_preview)
-
-        preview_controls.addStretch(1)
-        preview_controls.addWidget(self.gif_preview_play_button)
-        preview_controls.addWidget(self.gif_preview_pause_button)
-
+        # GIF preview area (play/pause controls are placed in the export row)
         preview_layout.addWidget(self.gif_preview_label)
-        preview_layout.addLayout(preview_controls)
 
         return preview_group
 
@@ -468,9 +289,10 @@ class MainWindow(QMainWindow):
         self.preview_splitter.setChildrenCollapsible(False)
         self.preview_splitter.addWidget(video_preview_group)
         self.preview_splitter.addWidget(gif_preview_group)
-        self.preview_splitter.setSizes([330, 220])
+        # Favor the GIF preview panel vertical space
+        self.preview_splitter.setSizes([260, 340])
         self.preview_splitter.setStretchFactor(0, 1)
-        self.preview_splitter.setStretchFactor(1, 1)
+        self.preview_splitter.setStretchFactor(1, 2)
 
         root_layout.addWidget(self.preview_splitter, stretch=1)
         root_layout.addWidget(self.create_export_controls_row())
@@ -1066,8 +888,11 @@ class MainWindow(QMainWindow):
 
         movie.setCacheMode(QMovie.CacheMode.CacheAll)
         self.gif_preview_label.setMovie(movie)
+        # Start the movie and scale it to fit the preview label while
+        # preserving aspect ratio so portrait GIFs are not cropped.
         movie.start()
         self._preview_movie = movie
+        self._update_preview_scaled_size()
 
     def _clear_preview_state(self, *, remove_temp_file: bool) -> None:
         """Clear preview UI state and optionally remove the temp GIF file."""
@@ -1084,6 +909,32 @@ class MainWindow(QMainWindow):
 
         if remove_temp_file and preview_file is not None:
             self._remove_file_if_exists(preview_file)
+
+    def _update_preview_scaled_size(self) -> None:
+        """Scale the current preview movie to fit the preview label while preserving aspect ratio."""
+        if self._preview_movie is None or not hasattr(self, "gif_preview_label"):
+            return
+
+        orig_rect = self._preview_movie.frameRect()
+        orig_size = orig_rect.size()
+        if orig_size.width() <= 0 or orig_size.height() <= 0:
+            return
+
+        label_size = self.gif_preview_label.size()
+        if label_size.width() <= 0 or label_size.height() <= 0:
+            return
+
+        scale_w = label_size.width() / orig_size.width()
+        scale_h = label_size.height() / orig_size.height()
+        scale = min(scale_w, scale_h)
+        new_w = max(1, int(orig_size.width() * scale))
+        new_h = max(1, int(orig_size.height() * scale))
+        self._preview_movie.setScaledSize(QSize(new_w, new_h))
+
+    def resizeEvent(self, event) -> None:
+        """Respond to window resizes by updating preview scaling."""
+        super().resizeEvent(event)
+        self._update_preview_scaled_size()
 
     def _remove_file_if_exists(self, file_path: Path) -> None:
         """Best-effort removal for temporary preview artifacts."""
