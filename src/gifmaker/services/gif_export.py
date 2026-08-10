@@ -20,6 +20,7 @@ def export_gif(
     end_seconds: float,
     fps: int,
     width: int,
+    crop: tuple[int, int, int, int] | None = None,
 ) -> None:
     """Export a GIF from a section of a video using FFmpeg."""
     source = Path(input_path)
@@ -39,6 +40,17 @@ def export_gif(
         raise GifExportError("FPS must be greater than 0")
     if width <= 0:
         raise GifExportError("Width must be greater than 0")
+    if crop is not None:
+        cx, cy, cw, ch = crop
+        if cx < 0 or cy < 0 or cw <= 0 or ch <= 0:
+            raise GifExportError(
+                "Crop dimensions must be positive with non-negative origin"
+            )
+
+    vf = f"fps={fps},scale={width}:-1:flags=lanczos"
+    if crop is not None:
+        cx, cy, cw, ch = crop
+        vf = f"crop={cw}:{ch}:{cx}:{cy},{vf}"
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -50,7 +62,7 @@ def export_gif(
         "-i",
         str(source),
         "-vf",
-        f"fps={fps},scale={width}:-1:flags=lanczos",
+        vf,
         str(destination),
     ]
 

@@ -78,3 +78,72 @@ def test_export_gif_raises_when_ffmpeg_fails(tmp_path: Path) -> None:
             assert str(exc) == "ffmpeg export failed: ffmpeg failure"
         else:
             assert False, "Expected GifExportError when ffmpeg fails"
+
+
+def test_export_gif_with_crop_prepends_crop_filter(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_gif = tmp_path / "output.gif"
+
+    with patch("gifmaker.services.gif_export.subprocess.run") as run_mock:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stderr = ""
+
+        export_gif(
+            input_video,
+            output_gif,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=12,
+            width=320,
+            crop=(10, 20, 200, 200),
+        )
+
+    cmd = run_mock.call_args.args[0]
+    vf_arg = cmd[cmd.index("-vf") + 1]
+    assert vf_arg.startswith("crop=200:200:10:20,")
+    assert ",fps=12," in vf_arg
+
+
+def test_export_gif_without_crop_omits_crop_filter(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_gif = tmp_path / "output.gif"
+
+    with patch("gifmaker.services.gif_export.subprocess.run") as run_mock:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stderr = ""
+
+        export_gif(
+            input_video,
+            output_gif,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=12,
+            width=320,
+        )
+
+    cmd = run_mock.call_args.args[0]
+    vf_arg = cmd[cmd.index("-vf") + 1]
+    assert vf_arg == "fps=12,scale=320:-1:flags=lanczos"
+
+
+def test_export_gif_raises_for_invalid_crop(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_gif = tmp_path / "output.gif"
+
+    try:
+        export_gif(
+            input_video,
+            output_gif,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=12,
+            width=320,
+            crop=(0, 0, -1, 100),
+        )
+    except GifExportError as exc:
+        assert "Crop" in str(exc)
+    else:
+        assert False, "Expected GifExportError for invalid crop dimensions"

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gifmaker.gui.crop_overlay_label import CropOverlayLabel
 from gifmaker.gui.marker_seek_slider import MarkerSeekSlider
 from gifmaker.models.video_info import VideoInfo
 from gifmaker.services.gif_export import GifExportError, export_gif
@@ -65,6 +66,8 @@ class MainWindow(QMainWindow):
         self._preview_frame_index: int = 0
 
         self._last_preview_settings: dict[str, float | int | str] | None = None
+        self._current_crop: tuple[int, int, int, int] | None = None
+        self._current_video_info: VideoInfo | None = None
 
         self.setWindowTitle("GIF Maker")
 
@@ -265,7 +268,7 @@ class MainWindow(QMainWindow):
         preview_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         preview_layout = QVBoxLayout(preview_group)
 
-        self.gif_preview_label = QLabel("Generate preview to display GIF")
+        self.gif_preview_label = CropOverlayLabel("Generate preview to display GIF")
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
         # Give the GIF preview a larger minimum height to prioritize it
         self.gif_preview_label.setMinimumHeight(220)
@@ -273,6 +276,7 @@ class MainWindow(QMainWindow):
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
+        self.gif_preview_label.cropChanged.connect(self._on_crop_changed)
         # GIF preview area (play/pause controls are placed in the export row)
         preview_layout.addWidget(self.gif_preview_label)
 
@@ -396,6 +400,7 @@ class MainWindow(QMainWindow):
             fps=video_info.fps,
             codec=video_info.codec,
         )
+        self.gif_preview_label.set_video_size(video_info.width, video_info.height)
 
     def toggle_preview_playback(self) -> None:
         """Toggle preview playback between play and pause."""
@@ -468,6 +473,9 @@ class MainWindow(QMainWindow):
             self.media_player.pause()
             self.reset_clip_selection()
             self._clear_preview_state(remove_temp_file=True)
+            self._current_video_info = self._pending_video_info
+            self._current_crop = None
+            self.gif_preview_label.clear_crop()
             self.current_video_fps = max(self._pending_video_info.fps, 1.0)
             self.update_video_info_from_model(
                 self._pending_video_path,
@@ -781,6 +789,7 @@ class MainWindow(QMainWindow):
                 end_seconds=render_settings["end_seconds"],
                 fps=render_settings["fps"],
                 width=render_settings["width"],
+                crop=render_settings["crop"],
             )
         except GifExportError as exc:
             self.export_status_label.setText(f"Status: Export failed: {exc}")
@@ -823,6 +832,7 @@ class MainWindow(QMainWindow):
                 end_seconds=render_settings["end_seconds"],
                 fps=render_settings["fps"],
                 width=render_settings["width"],
+                crop=render_settings["crop"],
             )
             self._set_preview_movie(temp_file)
         except (GifExportError, RuntimeError) as exc:
@@ -892,7 +902,12 @@ class MainWindow(QMainWindow):
 
         self._preview_movie.setPaused(True)
 
-    def _resolve_render_settings(self) -> dict[str, float | int]:
+    def _on_crop_changed(self, x: int, y: int, w: int, h: int) -> None:
+        self._current_crop = (x, y, w, h)
+
+    def _resolve_render_settings(
+        self,
+    ) -> dict[str, float | int | tuple[int, int, int, int] | None]:
         """Resolve render settings from timeline selection and compact controls."""
         if self.clip_start_time is None or self.clip_end_time is None:
             raise ValueError("Select a clip range on the timeline before export")
@@ -913,6 +928,7 @@ class MainWindow(QMainWindow):
             "end_seconds": end_seconds,
             "fps": self.export_fps_input.value(),
             "width": self.export_width_input.value(),
+            "crop": self._current_crop,
         }
 
     def _set_preview_movie(self, gif_path: Path) -> None:
