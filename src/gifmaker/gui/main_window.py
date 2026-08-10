@@ -6,8 +6,8 @@ import tempfile
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Qt, QUrl, Signal, QSize
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -58,6 +58,12 @@ class MainWindow(QMainWindow):
         self._restoring_previous_source = False
         self._preview_temp_file: Path | None = None
         self._preview_movie: QMovie | None = None
+        # Cached-frame preview state (optional faster/smoother playback path)
+        self._preview_frame_cache: list[QPixmap] | None = None
+        self._preview_frame_durations: list[int] | None = None
+        self._preview_frame_timer: QTimer | None = None
+        self._preview_frame_index: int = 0
+
         self._last_preview_settings: dict[str, float | int | str] | None = None
 
         self.setWindowTitle("GIF Maker")
@@ -838,6 +844,30 @@ class MainWindow(QMainWindow):
 
     def play_gif_preview(self) -> None:
         """Play the generated GIF preview."""
+        # If we have a cached frame playback, start or resume the timer
+        if self._preview_frame_cache:
+            if self._preview_frame_timer is None:
+                self._preview_frame_timer = QTimer(self)
+                self._preview_frame_timer.timeout.connect(self._on_cached_frame_timeout)
+                idx = self._preview_frame_index or 0
+                dur = (
+                    self._preview_frame_durations[idx]
+                    if self._preview_frame_durations
+                    else 100
+                )
+                self._preview_frame_timer.start(dur)
+                return
+
+            if not self._preview_frame_timer.isActive():
+                idx = self._preview_frame_index or 0
+                dur = (
+                    self._preview_frame_durations[idx]
+                    if self._preview_frame_durations
+                    else 100
+                )
+                self._preview_frame_timer.start(dur)
+            return
+
         if self._preview_movie is None:
             return
 
@@ -849,6 +879,14 @@ class MainWindow(QMainWindow):
 
     def pause_gif_preview(self) -> None:
         """Pause the generated GIF preview."""
+        # Pause cached playback if active
+        if self._preview_frame_cache and self._preview_frame_timer is not None:
+            try:
+                self._preview_frame_timer.stop()
+            except Exception:
+                pass
+            return
+
         if self._preview_movie is None:
             return
 
@@ -886,18 +924,114 @@ class MainWindow(QMainWindow):
         if self._preview_movie is not None:
             self._preview_movie.stop()
 
+        # Cache frames and durations if possible to drive playback manually
         movie.setCacheMode(QMovie.CacheMode.CacheAll)
+
+        # Try to compute a scaled size up-front to avoid resizing while
+        # playing which can cause visible flicker.
+        try:
+            movie.jumpToFrame(0)
+        except Exception:
+            pass
+
+        orig_rect = movie.frameRect()
+        if orig_rect.isValid() and orig_rect.width() > 0 and orig_rect.height() > 0:
+            label_size = self.gif_preview_label.size()
+            if label_size.width() > 0 and label_size.height() > 0:
+                scale_w = label_size.width() / orig_rect.width()
+                scale_h = label_size.height() / orig_rect.height()
+                scale = min(scale_w, scale_h)
+                new_w = max(1, int(orig_rect.width() * scale))
+                new_h = max(1, int(orig_rect.height() * scale))
+                movie.setScaledSize(QSize(new_w, new_h))
+
+        # Attempt to build a cached list of scaled QPixmaps and frame durations.
+        cached_frames: list[QPixmap] = []
+        cached_durations: list[int] = []
+        try:
+            total = movie.frameCount()
+        except Exception:
+            total = 0
+
+        if total and total > 0:
+            for i in range(total):
+                try:
+                    movie.jumpToFrame(i)
+                except Exception:
+                    break
+                pix = movie.currentPixmap()
+                if pix is None or pix.isNull():
+                    continue
+
+                scaled_size = movie.scaledSize()
+                if (
+                    scaled_size.isValid()
+                    and scaled_size.width() > 0
+                    and scaled_size.height() > 0
+                ):
+                    pix = pix.scaled(
+                        scaled_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                else:
+                    label_size = self.gif_preview_label.size()
+                    if label_size.width() > 0 and label_size.height() > 0:
+                        pix = pix.scaled(
+                            label_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                        )
+
+                cached_frames.append(pix)
+                try:
+                    dur = movie.nextFrameDelay()
+                except Exception:
+                    dur = 100
+                cached_durations.append(max(1, int(dur)))
+
+        if len(cached_frames) > 1:
+            # Use timer-driven cached playback for smooth looping
+            self._stop_cached_preview()
+            self._preview_frame_cache = cached_frames
+            self._preview_frame_durations = cached_durations
+            self._preview_frame_index = 0
+            self.gif_preview_label.setPixmap(self._preview_frame_cache[0])
+            self._preview_frame_timer = QTimer(self)
+            self._preview_frame_timer.timeout.connect(self._on_cached_frame_timeout)
+            self._preview_frame_timer.start(self._preview_frame_durations[0])
+            try:
+                movie.stop()
+            except Exception:
+                pass
+            self._preview_movie = None
+            return
+
+        # Fallback to QMovie playback with a frame handler to loop seamlessly
+        try:
+            if self._preview_movie is not None:
+                self._preview_movie.frameChanged.disconnect(
+                    self._on_preview_frame_changed
+                )
+        except Exception:
+            pass
+
+        movie.frameChanged.connect(self._on_preview_frame_changed)
         self.gif_preview_label.setMovie(movie)
-        # Start the movie and scale it to fit the preview label while
-        # preserving aspect ratio so portrait GIFs are not cropped.
         movie.start()
         self._preview_movie = movie
-        self._update_preview_scaled_size()
 
     def _clear_preview_state(self, *, remove_temp_file: bool) -> None:
         """Clear preview UI state and optionally remove the temp GIF file."""
         preview_file = self._preview_temp_file
+        # Stop any cached-frame playback first
+        try:
+            self._stop_cached_preview()
+        except Exception:
+            pass
         if self._preview_movie is not None:
+            try:
+                self._preview_movie.frameChanged.disconnect(
+                    self._on_preview_frame_changed
+                )
+            except Exception:
+                pass
             self._preview_movie.stop()
             self._preview_movie = None
 
@@ -909,6 +1043,67 @@ class MainWindow(QMainWindow):
 
         if remove_temp_file and preview_file is not None:
             self._remove_file_if_exists(preview_file)
+
+    def _stop_cached_preview(self) -> None:
+        """Stop and clear any QTimer-based cached preview playback."""
+        if self._preview_frame_timer is not None:
+            try:
+                self._preview_frame_timer.stop()
+                self._preview_frame_timer.timeout.disconnect(
+                    self._on_cached_frame_timeout
+                )
+            except Exception:
+                pass
+            self._preview_frame_timer = None
+
+        self._preview_frame_cache = None
+        self._preview_frame_durations = None
+        self._preview_frame_index = 0
+
+    def _on_cached_frame_timeout(self) -> None:
+        """Advance cached frame playback and schedule the next timeout."""
+        if not self._preview_frame_cache or not self._preview_frame_durations:
+            return
+
+        self._preview_frame_index = (self._preview_frame_index + 1) % len(
+            self._preview_frame_cache
+        )
+        pix = self._preview_frame_cache[self._preview_frame_index]
+        self.gif_preview_label.setPixmap(pix)
+        if self._preview_frame_timer is not None:
+            next_dur = self._preview_frame_durations[self._preview_frame_index]
+            self._preview_frame_timer.start(next_dur)
+
+    def _on_preview_frame_changed(self, frame: int) -> None:
+        """Handle frame changes to implement a seamless loop for QMovie.
+
+        Some PySide6 builds don't expose a setter for the loop count; when the
+        movie reports it has reached its last frame, jump back to frame 0 on the
+        next event loop tick to avoid visible flicker from stopping/starting.
+        """
+        movie = self._preview_movie
+        if movie is None:
+            return
+
+        try:
+            total = movie.frameCount()
+        except Exception:
+            total = 0
+
+        if total <= 0:
+            return
+
+        # If we're at the last frame, schedule a jump to frame 0 immediately
+        if frame >= total - 1:
+
+            def _restart(m=movie):
+                try:
+                    m.jumpToFrame(0)
+                    m.start()
+                except Exception:
+                    pass
+
+            QTimer.singleShot(0, _restart)
 
     def _update_preview_scaled_size(self) -> None:
         """Scale the current preview movie to fit the preview label while preserving aspect ratio."""
