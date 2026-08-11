@@ -126,11 +126,15 @@ class MainWindow(QMainWindow):
 
         self.seek_time_label = QLabel("00:00:00 / 00:00:00")
 
+        self.mute_button = QPushButton("Mute")
+        self.mute_button.clicked.connect(self.toggle_mute)
+
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(self.set_start_button)
         controls_layout.addWidget(self.set_end_button)
         controls_layout.addWidget(self.seek_slider, stretch=1)
         controls_layout.addWidget(self.seek_time_label)
+        controls_layout.addWidget(self.mute_button)
 
         marker_controls = QHBoxLayout()
 
@@ -419,6 +423,13 @@ class MainWindow(QMainWindow):
             self.media_player.play()
 
         self._update_play_button_state()
+
+    def toggle_mute(self) -> None:
+        """Toggle audio output between muted and unmuted."""
+        if self.audio_output.isMuted():
+            self.audio_output.setMuted(False)
+        else:
+            self.audio_output.setMuted(True)
 
     def _seconds_to_frame(self, seconds: float) -> int:
         """Convert seconds to a frame delta using the current preview FPS."""
