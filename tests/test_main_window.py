@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QGroupBox, QSplitter
+from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
 
@@ -38,5 +38,19 @@ def test_seek_slider_moves_media_player_to_frame_position_in_milliseconds() -> N
         window.on_seek_slider_released()
 
     assert set_position.call_args_list[-1].args[0] == 2000
+
+    app.quit()
+
+
+def test_export_format_combo_has_gif_and_webp_options() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    combo = window.export_format_combo
+    assert isinstance(combo, QComboBox)
+    assert combo.count() == 2
+    assert combo.itemText(0) == "GIF"
+    assert combo.itemText(1) == "WebP"
+    assert combo.currentText() == "GIF"
 
     app.quit()

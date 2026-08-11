@@ -11,6 +11,7 @@ from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -28,7 +29,7 @@ from PySide6.QtWidgets import (
 from gifmaker.gui.crop_overlay_label import CropOverlayLabel
 from gifmaker.gui.marker_seek_slider import MarkerSeekSlider
 from gifmaker.models.video_info import VideoInfo
-from gifmaker.services.gif_export import GifExportError, export_gif
+from gifmaker.services.gif_export import GifExportError, export_gif, export_webp
 from gifmaker.video.probe import VideoProbeError, probe_video
 
 
@@ -219,6 +220,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.export_fps_input)
         layout.addWidget(QLabel("Width"))
         layout.addWidget(self.export_width_input)
+        layout.addSpacing(8)
+        self.export_format_combo = QComboBox()
+        self.export_format_combo.addItems(["GIF", "WebP"])
+        layout.addWidget(QLabel("Format"))
+        layout.addWidget(self.export_format_combo)
         layout.addSpacing(8)
         layout.addWidget(self.gif_preview_play_button)
         layout.addWidget(self.gif_preview_pause_button)
@@ -728,14 +734,58 @@ class MainWindow(QMainWindow):
         return f"{minutes:02d}:{seconds:02d}:{centiseconds:02d}"
 
     def export_gif_from_selection(self) -> None:
-        """Export a selected time segment from the current video to GIF."""
+        """Export a selected time segment from the current video."""
         if self.current_video_path is None:
             self.export_status_label.setText("Status: Load a video first.")
             logger.error("Export requested without a loaded video.")
             return
 
-        default_save_name = "output.gif"
+        fmt = self.export_format_combo.currentText()
         video_path = Path(self.current_video_path)
+
+        if fmt == "WebP":
+            default_save_name = str(video_path.with_suffix(".webp"))
+            output_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save WebP",
+                default_save_name,
+                "WebP Files (*.webp)",
+            )
+            if not output_path:
+                self.export_status_label.setText("Status: Export cancelled.")
+                logger.info("WebP export cancelled by user.")
+                return
+
+            try:
+                render_settings = self._resolve_render_settings()
+            except ValueError as exc:
+                self.export_status_label.setText(f"Status: {exc}")
+                logger.error("Invalid export time input: {}", exc)
+                return
+
+            self.export_status_label.setText("Status: Exporting...")
+            logger.info("Starting WebP export to '{}'", output_path)
+
+            try:
+                export_webp(
+                    self.current_video_path,
+                    output_path,
+                    start_seconds=render_settings["start_seconds"],
+                    end_seconds=render_settings["end_seconds"],
+                    fps=render_settings["fps"],
+                    width=render_settings["width"],
+                    crop=render_settings["crop"],
+                )
+            except GifExportError as exc:
+                self.export_status_label.setText(f"Status: Export failed: {exc}")
+                logger.error("WebP export failed: {}", exc)
+                return
+
+            self.export_status_label.setText("Status: Export complete.")
+            logger.info("WebP export complete: {}", output_path)
+            return
+
+        # GIF path — existing behaviour preserved exactly
         default_save_name = str(video_path.with_suffix(".gif"))
 
         output_path, _ = QFileDialog.getSaveFileName(
