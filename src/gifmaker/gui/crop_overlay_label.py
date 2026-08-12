@@ -12,7 +12,7 @@ _HANDLE_SIZE = 6
 
 
 class CropOverlayLabel(QLabel):
-    """Drop-in QLabel replacement that draws a 1:1 crop overlay over the GIF preview."""
+    """Drop-in QLabel replacement that draws an arbitrary-rectangle crop overlay over the GIF preview."""
 
     cropChanged = Signal(int, int, int, int)  # x, y, w, h in source-video pixels
 
@@ -81,17 +81,22 @@ class CropOverlayLabel(QLabel):
         y = max(r.top(), min(rect.y(), r.bottom() - h + 1))
         return QRect(x, y, w, h)
 
-    def _hit_corner(self, pos: QPoint) -> str | None:
-        """Return which corner handle pos overlaps, or None."""
+    def _hit_handle(self, pos: QPoint) -> str | None:
+        """Return which resize handle pos overlaps, or None."""
         if self._crop_label_rect is None:
             return None
         r = self._crop_label_rect
-        for name, cx, cy in (
+        handles = (
             ("TL", r.left(), r.top()),
             ("TR", r.right(), r.top()),
             ("BL", r.left(), r.bottom()),
             ("BR", r.right(), r.bottom()),
-        ):
+            ("L", r.left(), r.top() + r.height() // 2),
+            ("R", r.right(), r.top() + r.height() // 2),
+            ("T", r.left() + r.width() // 2, r.top()),
+            ("B", r.left() + r.width() // 2, r.bottom()),
+        )
+        for name, cx, cy in handles:
             if (
                 abs(pos.x() - cx) <= _HANDLE_RADIUS
                 and abs(pos.y() - cy) <= _HANDLE_RADIUS
@@ -99,16 +104,24 @@ class CropOverlayLabel(QLabel):
                 return name
         return None
 
-    def _get_anchor_for_corner(self, corner: str) -> QPoint:
-        """Return the opposite corner (Qt inclusive coords) used as the fixed resize anchor."""
+    def _get_anchor_for_handle(self, handle: str) -> QPoint:
+        """Return the fixed anchor point used while resizing a handle."""
         r = self._crop_label_rect
-        if corner == "TL":
+        if handle == "TL":
             return QPoint(r.right(), r.bottom())
-        if corner == "TR":
+        if handle == "TR":
             return QPoint(r.left(), r.bottom())
-        if corner == "BL":
+        if handle == "BL":
             return QPoint(r.right(), r.top())
-        return QPoint(r.left(), r.top())  # BR
+        if handle == "BR":
+            return QPoint(r.left(), r.top())
+        if handle == "L":
+            return QPoint(r.right(), r.top())
+        if handle == "R":
+            return QPoint(r.left(), r.top())
+        if handle == "T":
+            return QPoint(r.left(), r.bottom())
+        return QPoint(r.left(), r.top())  # B
 
     def _label_rect_to_video_rect(self, rect: QRect) -> tuple[int, int, int, int]:
         """Convert a label-space rect to (x, y, w, h) in source-video pixels."""
@@ -154,6 +167,10 @@ class CropOverlayLabel(QLabel):
             (r.right(), r.top()),
             (r.left(), r.bottom()),
             (r.right(), r.bottom()),
+            (r.left(), r.top() + r.height() // 2),
+            (r.right(), r.top() + r.height() // 2),
+            (r.left() + r.width() // 2, r.top()),
+            (r.left() + r.width() // 2, r.bottom()),
         ):
             handle = QRect(cx - hs, cy - hs, _HANDLE_SIZE, _HANDLE_SIZE)
             painter.fillRect(handle, fill)
@@ -168,11 +185,15 @@ class CropOverlayLabel(QLabel):
         if rendered.isNull() or not rendered.contains(pos):
             self.unsetCursor()
             return
-        corner = self._hit_corner(pos)
-        if corner in ("TL", "BR"):
+        handle = self._hit_handle(pos)
+        if handle in ("TL", "BR"):
             self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        elif corner in ("TR", "BL"):
+        elif handle in ("TR", "BL"):
             self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif handle in ("L", "R"):
+            self.setCursor(Qt.CursorShape.SizeHorCursor)
+        elif handle in ("T", "B"):
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
         elif self._crop_label_rect is not None and self._crop_label_rect.contains(pos):
             self.setCursor(Qt.CursorShape.SizeAllCursor)
         else:
@@ -191,11 +212,11 @@ class CropOverlayLabel(QLabel):
             super().mousePressEvent(event)
             return
 
-        corner = self._hit_corner(pos)
-        if corner is not None:
+        handle = self._hit_handle(pos)
+        if handle is not None:
             self._crop_mode = "resizing"
-            self._resize_corner = corner
-            self._resize_anchor = self._get_anchor_for_corner(corner)
+            self._resize_corner = handle
+            self._resize_anchor = self._get_anchor_for_handle(handle)
             return
 
         if self._crop_label_rect is not None and self._crop_label_rect.contains(pos):
@@ -231,6 +252,7 @@ class CropOverlayLabel(QLabel):
             if (
                 self._crop_label_rect is None
                 or self._crop_label_rect.width() < _MIN_CROP_PX
+                or self._crop_label_rect.height() < _MIN_CROP_PX
             ):
                 self._crop_label_rect = None
                 self.update()
@@ -244,6 +266,7 @@ class CropOverlayLabel(QLabel):
             if (
                 self._crop_label_rect is not None
                 and self._crop_label_rect.width() >= _MIN_CROP_PX
+                and self._crop_label_rect.height() >= _MIN_CROP_PX
             ):
                 self._emit_crop()
             else:
@@ -263,12 +286,17 @@ class CropOverlayLabel(QLabel):
         if self._drag_origin is None:
             return
         clamped = self._clamp_to_rendered(pos)
-        dx = clamped.x() - self._drag_origin.x()
-        dy = clamped.y() - self._drag_origin.y()
-        side = min(abs(dx), abs(dy))
-        x = self._drag_origin.x() if dx >= 0 else self._drag_origin.x() - side
-        y = self._drag_origin.y() if dy >= 0 else self._drag_origin.y() - side
-        self._crop_label_rect = QRect(x, y, side, side)
+        x1 = self._drag_origin.x()
+        y1 = self._drag_origin.y()
+        x2 = clamped.x()
+        y2 = clamped.y()
+
+        left = min(x1, x2)
+        top = min(y1, y2)
+        right = max(x1, x2)
+        bottom = max(y1, y2)
+        rect = QRect(left, top, max(right - left, 1), max(bottom - top, 1))
+        self._crop_label_rect = self._clamp_rect_in_rendered(rect)
         self.update()
 
     def _update_moving(self, pos: QPoint) -> None:
@@ -285,17 +313,80 @@ class CropOverlayLabel(QLabel):
         self.update()
 
     def _update_resizing(self, pos: QPoint) -> None:
-        if self._resize_anchor is None:
+        if self._resize_corner is None or self._crop_label_rect is None:
             return
+
+        rendered = self._get_pixmap_rendered_rect()
+        if rendered.isNull():
+            return
+
         clamped = self._clamp_to_rendered(pos)
-        anchor = self._resize_anchor
-        dx = clamped.x() - anchor.x()
-        dy = clamped.y() - anchor.y()
-        side = max(_MIN_CROP_PX, min(abs(dx), abs(dy)))
-        # anchor uses Qt inclusive right/bottom, so offset by +1 when rect extends leftward/upward
-        x1 = anchor.x() if dx >= 0 else anchor.x() - side + 1
-        y1 = anchor.y() if dy >= 0 else anchor.y() - side + 1
-        self._crop_label_rect = QRect(x1, y1, side, side)
+        r = self._crop_label_rect
+        handle = self._resize_corner
+        anchor = self._resize_anchor or self._get_anchor_for_handle(handle)
+
+        left = r.left()
+        top = r.top()
+        right = r.right()
+        bottom = r.bottom()
+
+        if handle == "TL":
+            left = clamped.x()
+            top = clamped.y()
+            right = anchor.x()
+            bottom = anchor.y()
+        elif handle == "TR":
+            right = clamped.x()
+            top = clamped.y()
+            left = anchor.x()
+            bottom = anchor.y()
+        elif handle == "BL":
+            left = clamped.x()
+            bottom = clamped.y()
+            right = anchor.x()
+            top = anchor.y()
+        elif handle == "BR":
+            right = clamped.x()
+            bottom = clamped.y()
+            left = anchor.x()
+            top = anchor.y()
+        elif handle == "L":
+            left = clamped.x()
+        elif handle == "R":
+            right = clamped.x()
+        elif handle == "T":
+            top = clamped.y()
+        elif handle == "B":
+            bottom = clamped.y()
+
+        left = max(rendered.left(), min(left, rendered.right()))
+        right = min(rendered.right(), max(right, rendered.left()))
+        top = max(rendered.top(), min(top, rendered.bottom()))
+        bottom = min(rendered.bottom(), max(bottom, rendered.top()))
+
+        if right - left + 1 < _MIN_CROP_PX:
+            if handle in ("L", "TL", "BL"):
+                left = right - (_MIN_CROP_PX - 1)
+            else:
+                right = left + (_MIN_CROP_PX - 1)
+
+        if bottom - top + 1 < _MIN_CROP_PX:
+            if handle in ("T", "TL", "TR"):
+                top = bottom - (_MIN_CROP_PX - 1)
+            else:
+                bottom = top + (_MIN_CROP_PX - 1)
+
+        left = max(rendered.left(), left)
+        right = min(rendered.right(), right)
+        top = max(rendered.top(), top)
+        bottom = min(rendered.bottom(), bottom)
+
+        self._crop_label_rect = QRect(
+            left,
+            top,
+            max(right - left + 1, _MIN_CROP_PX),
+            max(bottom - top + 1, _MIN_CROP_PX),
+        )
         self.update()
 
     def _emit_crop(self) -> None:

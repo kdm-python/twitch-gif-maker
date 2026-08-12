@@ -55,20 +55,58 @@ def test_label_to_video_coords_center_maps_correctly() -> None:
     assert vh == 200
 
 
-def test_crop_is_square_on_draw() -> None:
+def test_crop_can_be_rectangular_on_draw() -> None:
     label = _make_label(200, 200)
     _set_pixmap(label, 160, 120)
     label.set_video_size(640, 480)
 
-    # Simulate a drag from (20, 10) with unequal dx/dy; result must be square
     label._crop_mode = "drawing"
-    label._drag_origin = QPoint(20, 10)
-    label._update_drawing(QPoint(80, 60))  # dx=60, dy=50 → side=50
+    label._drag_origin = QPoint(40, 50)
+    label._update_drawing(QPoint(130, 90))
 
     assert label._crop_label_rect is not None
     r = label._crop_label_rect
-    assert r.width() == r.height()
-    assert r.width() == 50
+    assert r.x() == 40
+    assert r.y() == 50
+    assert r.width() == 90
+    assert r.height() == 40
+
+
+def test_resize_handle_allows_independent_width_and_height() -> None:
+    label = _make_label(200, 200)
+    _set_pixmap(label, 160, 120)
+    label.set_video_size(640, 480)
+    label._crop_label_rect = QRect(30, 20, 80, 60)
+    label._crop_mode = "resizing"
+    label._resize_corner = "BR"
+    label._resize_anchor = QPoint(30, 20)
+
+    label._update_resizing(QPoint(130, 90))
+
+    assert label._crop_label_rect is not None
+    r = label._crop_label_rect
+    assert r.x() == 30
+    assert r.y() == 40
+    assert r.width() == 101
+    assert r.height() == 51
+
+
+def test_moving_crop_preserves_after_rectangular_resize() -> None:
+    label = _make_label(200, 200)
+    _set_pixmap(label, 160, 120)
+    label.set_video_size(640, 480)
+    label._crop_label_rect = QRect(40, 40, 80, 60)
+
+    label._crop_mode = "moving"
+    label._drag_offset = QPoint(10, 10)
+    label._update_moving(QPoint(90, 100))
+
+    assert label._crop_label_rect is not None
+    r = label._crop_label_rect
+    assert r.x() == 80
+    assert r.y() == 90
+    assert r.width() == 80
+    assert r.height() == 60
 
 
 def test_no_signal_emitted_without_pixmap() -> None:
