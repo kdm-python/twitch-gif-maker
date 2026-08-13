@@ -8,8 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from unittest.mock import MagicMock
 
-from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QPoint, QRect, QEvent, Qt
+from PySide6.QtGui import QKeyEvent, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from gifmaker.gui.crop_overlay_label import CropOverlayLabel
@@ -128,3 +128,19 @@ def test_no_signal_emitted_without_pixmap() -> None:
     label._emit_crop()
 
     assert received == []
+
+
+def test_escape_key_clears_active_crop_selection() -> None:
+    label = _make_label(200, 200)
+    _set_pixmap(label, 160, 120)
+    label.set_video_size(640, 480)
+    label._crop_label_rect = QRect(30, 20, 80, 60)
+    label._crop_mode = "moving"
+
+    press = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key_Escape, Qt.KeyboardModifier.NoModifier
+    )
+    label.keyPressEvent(press)
+
+    assert label._crop_label_rect is None
+    assert label._crop_mode == "idle"

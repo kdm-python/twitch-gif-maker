@@ -7,7 +7,14 @@ from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie, QPixmap
+from PySide6.QtGui import (
+    QCloseEvent,
+    QGuiApplication,
+    QKeyEvent,
+    QMovie,
+    QPixmap,
+    # QShortcut,
+)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -136,13 +143,12 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self.seek_time_label)
         controls_layout.addWidget(self.mute_button)
 
-        marker_controls = QHBoxLayout()
-
         self.start_frame_label = QLabel("Start: --:--:--.---")
         self.start_nudge_back_button = QPushButton("−0.01")
         self.start_nudge_back_button.clicked.connect(
             lambda: self.nudge_start_frame(-self._seconds_to_frame(0.01))
         )
+        marker_controls = QHBoxLayout()
         self.start_nudge_forward_button = QPushButton("+0.01")
         self.start_nudge_forward_button.clicked.connect(
             lambda: self.nudge_start_frame(self._seconds_to_frame(0.01))
@@ -209,6 +215,12 @@ class MainWindow(QMainWindow):
         self.generate_preview_button = QPushButton("Generate Preview")
         self.generate_preview_button.clicked.connect(self.generate_gif_preview)
 
+        self.apply_crop_button = QPushButton("Apply Crop")
+        self.apply_crop_button.clicked.connect(self.apply_crop_to_preview)
+
+        self.reset_crop_button = QPushButton("Reset Crop")
+        self.reset_crop_button.clicked.connect(self.reset_preview_crop)
+
         # GIF preview play/pause controls (placed here to save vertical space)
         self.gif_preview_play_button = QPushButton("Play")
         self.gif_preview_play_button.clicked.connect(self.play_gif_preview)
@@ -234,6 +246,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.gif_preview_pause_button)
         layout.addStretch(1)
         layout.addWidget(self.generate_preview_button)
+        layout.addWidget(self.apply_crop_button)
+        layout.addWidget(self.reset_crop_button)
 
         return row
 
@@ -287,6 +301,7 @@ class MainWindow(QMainWindow):
         )
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
         self.gif_preview_label.cropChanged.connect(self._on_crop_changed)
+        self.gif_preview_label.cropCleared.connect(self._on_crop_cleared)
         # GIF preview area (play/pause controls are placed in the export row)
         preview_layout.addWidget(self.gif_preview_label)
 
@@ -426,6 +441,7 @@ class MainWindow(QMainWindow):
 
     def toggle_mute(self) -> None:
         """Toggle audio output between muted and unmuted."""
+        # Change button state
         if self.audio_output.isMuted():
             self.audio_output.setMuted(False)
         else:
@@ -692,6 +708,29 @@ class MainWindow(QMainWindow):
         end_frame = self._ms_to_frame(round(end_seconds * 1000.0))
         self.seek_slider.set_selection(self.start_frame, end_frame)
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Handle keyboard shortcuts for marker nudging."""
+        if event.key() == Qt.Key_Left:
+            self._leftArrowPressed()
+        elif event.key() == Qt.Key_Right:
+            self._rightArrowPressed()
+        else:
+            super().keyPressEvent(event)
+
+    def _leftArrowPressed(self) -> None:
+        """Nudge the start marker left by one frame."""
+        # self.nudge_start_frame(-1)
+        self.media_player.setPosition(
+            max(0, self.media_player.position() - 1000 / self.current_video_fps)
+        )
+
+    def _rightArrowPressed(self) -> None:
+        """Nudge the end marker right by one frame."""
+        self.media_player.setPosition(
+            self.media_player.position() + 1000 / self.current_video_fps
+        )
+        # self.nudge_end_frame(1)
+
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
         if current_ms is None:
@@ -860,12 +899,16 @@ class MainWindow(QMainWindow):
         self.export_status_label.setText("Status: Export complete.")
         logger.info("GIF export complete: {}", output_path)
 
-    def generate_gif_preview(self) -> None:
+    def generate_gif_preview(self, *, force_crop: bool = False) -> None:
         """Generate a temporary GIF preview from the current settings."""
         if self.current_video_path is None:
             self.export_status_label.setText("Status: Load a video first.")
             logger.error("Preview requested without a loaded video.")
             return
+
+        if not force_crop:
+            self._current_crop = None
+            self.gif_preview_label.clear_crop()
 
         try:
             render_settings = self._resolve_render_settings()
@@ -965,6 +1008,30 @@ class MainWindow(QMainWindow):
 
     def _on_crop_changed(self, x: int, y: int, w: int, h: int) -> None:
         self._current_crop = (x, y, w, h)
+
+    def _on_crop_cleared(self) -> None:
+        self._current_crop = None
+
+    def reset_preview_crop(self) -> None:
+        """Clear any crop selection and return the current preview to the base clip."""
+        self._current_crop = None
+        self.gif_preview_label.clear_crop()
+        if self.current_video_path is not None:
+            self.generate_gif_preview()
+
+    def apply_crop_to_preview(self) -> None:
+        """Regenerate the preview using the current crop selection."""
+        if self.current_video_path is None:
+            self.export_status_label.setText("Status: Load a video first.")
+            logger.error("Crop requested without a loaded video.")
+            return
+
+        if self._current_crop is None:
+            self.export_status_label.setText("Status: Draw a crop selection first.")
+            logger.info("Crop preview requested without an active crop selection.")
+            return
+
+        self.generate_gif_preview(force_crop=True)
 
     def _resolve_render_settings(
         self,

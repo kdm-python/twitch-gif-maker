@@ -54,3 +54,25 @@ def test_export_format_combo_has_gif_and_webp_options() -> None:
     assert combo.currentText() == "GIF"
 
     app.quit()
+
+
+def test_reset_preview_crop_clears_box_and_window_state() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window._current_crop = (10, 20, 30, 40)
+    window.gif_preview_label._crop_label_rect = (
+        window.gif_preview_label._crop_label_rect
+        or window.gif_preview_label._crop_label_rect
+    )
+    window.gif_preview_label._crop_label_rect = (
+        window.gif_preview_label._crop_label_rect
+    )
+    window.gif_preview_label._crop_mode = "moving"
+
+    window.reset_preview_crop()
+
+    assert window._current_crop is None
+    assert window.gif_preview_label._crop_label_rect is None
+    assert window.gif_preview_label._crop_mode == "idle"
+
+    app.quit()

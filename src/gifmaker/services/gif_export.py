@@ -66,10 +66,15 @@ def export_gif(
         str(source),
         "-vf",
         vf,
+        "-quality",
+        "90",
+        "-preset",
+        "photo",
         str(destination),
     ]
 
     logger.info("Running FFmpeg GIF export: {}", " ".join(ffmpeg_cmd))
+    logger.info("*** Full ffmpeg command: {}", " ".join(ffmpeg_cmd))
 
     try:
         result = subprocess.run(
@@ -136,6 +141,7 @@ def export_webp(
             )
 
     vf = _build_vf_filters(fps, width, crop)
+    logger.debug("*** WebP export VF FILTERS *** {}", vf)
 
     ffmpeg_cmd = [
         _ffmpeg_exe(),

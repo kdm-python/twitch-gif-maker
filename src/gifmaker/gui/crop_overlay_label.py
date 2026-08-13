@@ -15,6 +15,7 @@ class CropOverlayLabel(QLabel):
     """Drop-in QLabel replacement that draws an arbitrary-rectangle crop overlay over the GIF preview."""
 
     cropChanged = Signal(int, int, int, int)  # x, y, w, h in source-video pixels
+    cropCleared = Signal()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -39,12 +40,15 @@ class CropOverlayLabel(QLabel):
 
     def clear_crop(self) -> None:
         """Remove the current crop selection and reset interaction state."""
+        if self._crop_label_rect is None and self._crop_mode == "idle":
+            return
         self._crop_label_rect = None
         self._crop_mode = "idle"
         self._drag_origin = None
         self._drag_offset = None
         self._resize_corner = None
         self._resize_anchor = None
+        self.cropCleared.emit()
         self.update()
 
     # ── Geometry helpers ───────────────────────────────────────────────────────
@@ -208,7 +212,18 @@ class CropOverlayLabel(QLabel):
 
         pos = event.position().toPoint()
         rendered = self._get_pixmap_rendered_rect()
-        if rendered.isNull() or not rendered.contains(pos):
+        if rendered.isNull():
+            super().mousePressEvent(event)
+            return
+
+        if self._crop_label_rect is not None and not self._crop_label_rect.contains(
+            pos
+        ):
+            self.clear_crop()
+            if not rendered.contains(pos):
+                return
+
+        if not rendered.contains(pos):
             super().mousePressEvent(event)
             return
 
@@ -388,6 +403,12 @@ class CropOverlayLabel(QLabel):
             max(bottom - top + 1, _MIN_CROP_PX),
         )
         self.update()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape and self._crop_label_rect is not None:
+            self.clear_crop()
+            return
+        super().keyPressEvent(event)
 
     def _emit_crop(self) -> None:
         if self._crop_label_rect is None:
