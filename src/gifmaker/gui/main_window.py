@@ -11,9 +11,10 @@ from PySide6.QtGui import (
     QCloseEvent,
     QGuiApplication,
     QKeyEvent,
+    QKeySequence,
     QMovie,
     QPixmap,
-    # QShortcut,
+    QShortcut,
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -77,12 +78,43 @@ class MainWindow(QMainWindow):
         self._current_crop: tuple[int, int, int, int] | None = None
         self._current_video_info: VideoInfo | None = None
 
-        self.setWindowTitle("GIF Maker")
+        # --- Keyboard Shortcuts ---
 
+        self.left_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
+        self.left_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.left_shortcut.activated.connect(self._leftArrowPressed)
+
+        self.right_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
+        self.right_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.right_shortcut.activated.connect(self._rightArrowPressed)
+
+        self.play_button_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self.play_button_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.play_button_shortcut.activated.connect(self.toggle_preview_playback)
+
+        self.mute_shortcut = QShortcut(QKeySequence(Qt.Key.Key_M), self)
+        self.mute_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.mute_shortcut.activated.connect(self.toggle_mute)
+
+        # --- Render Window ---
+
+        self.setWindowTitle("GIF Maker")
         self.create_menu()
         self.build_layout()
         self._fit_to_available_screen()
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocus()
+
         logger.info("Main window initialized.")
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+
+        if event.key() == Qt.Key_Left:
+            self._leftArrowPressed()
+        elif event.key() == Qt.Key_Right:
+            self._rightArrowPressed()
+        else:
+            super().keyPressEvent(event)
 
     def create_menu(self) -> None:
         """Create the top-level menu structure."""
@@ -102,6 +134,7 @@ class MainWindow(QMainWindow):
         self.video_widget.setMinimumHeight(160)
         self.video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_widget.setStyleSheet("border: 1px solid palette(mid);")
+        self.video_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.media_player = QMediaPlayer(group)
         self.audio_output = QAudioOutput(group)
@@ -708,28 +741,15 @@ class MainWindow(QMainWindow):
         end_frame = self._ms_to_frame(round(end_seconds * 1000.0))
         self.seek_slider.set_selection(self.start_frame, end_frame)
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        """Handle keyboard shortcuts for marker nudging."""
-        if event.key() == Qt.Key_Left:
-            self._leftArrowPressed()
-        elif event.key() == Qt.Key_Right:
-            self._rightArrowPressed()
-        else:
-            super().keyPressEvent(event)
-
     def _leftArrowPressed(self) -> None:
-        """Nudge the start marker left by one frame."""
-        # self.nudge_start_frame(-1)
-        self.media_player.setPosition(
-            max(0, self.media_player.position() - 1000 / self.current_video_fps)
-        )
+        """Move playback position back by one frame."""
+        frame_ms = int(1000 / self.current_video_fps)
+        self.media_player.setPosition(max(0, self.media_player.position() - frame_ms))
 
     def _rightArrowPressed(self) -> None:
-        """Nudge the end marker right by one frame."""
-        self.media_player.setPosition(
-            self.media_player.position() + 1000 / self.current_video_fps
-        )
-        # self.nudge_end_frame(1)
+        """Move playback position forward by one frame."""
+        frame_ms = int(1000 / self.current_video_fps)
+        self.media_player.setPosition(self.media_player.position() + frame_ms)
 
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
