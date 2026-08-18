@@ -96,6 +96,30 @@ class MainWindow(QMainWindow):
         self.mute_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.mute_shortcut.activated.connect(self.toggle_mute)
 
+        self.start_slider_left_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Z), self)
+        self.start_slider_left_shortcut.setContext(
+            Qt.ShortcutContext.ApplicationShortcut
+        )
+        self.start_slider_left_shortcut.activated.connect(self._startSliderLeftPressed)
+
+        self.start_slider_right_shortcut = QShortcut(QKeySequence(Qt.Key.Key_X), self)
+        self.start_slider_right_shortcut.setContext(
+            Qt.ShortcutContext.ApplicationShortcut
+        )
+        self.start_slider_right_shortcut.activated.connect(
+            self._startSliderRightPressed
+        )
+
+        self.end_slider_left_shortcut = QShortcut(QKeySequence(Qt.Key.Key_B), self)
+        self.end_slider_left_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.end_slider_left_shortcut.activated.connect(self._endSliderLeftPressed)
+
+        self.end_slider_right_shortcut = QShortcut(QKeySequence(Qt.Key.Key_N), self)
+        self.end_slider_right_shortcut.setContext(
+            Qt.ShortcutContext.ApplicationShortcut
+        )
+        self.end_slider_right_shortcut.activated.connect(self._endSliderRightPressed)
+
         # --- Render Window ---
 
         self.setWindowTitle("GIF Maker")
@@ -750,6 +774,22 @@ class MainWindow(QMainWindow):
         """Move playback position forward by one frame."""
         frame_ms = int(1000 / self.current_video_fps)
         self.media_player.setPosition(self.media_player.position() + frame_ms)
+
+    def _startSliderLeftPressed(self) -> None:
+        """Nudge the start marker back by one frame."""
+        self.nudge_start_frame(-1)
+
+    def _startSliderRightPressed(self) -> None:
+        """Nudge the end marker forward by one frame."""
+        self.nudge_start_frame(1)
+
+    def _endSliderLeftPressed(self) -> None:
+        """Nudge the start marker back by one frame."""
+        self.nudge_end_frame(-1)
+
+    def _endSliderRightPressed(self) -> None:
+        """Nudge the end marker forward by one frame."""
+        self.nudge_end_frame(1)
 
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
