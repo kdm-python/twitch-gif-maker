@@ -3,9 +3,11 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
+from gifmaker.gui.shortcut_manager import ShortcutManager
 
 
 def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
@@ -74,5 +76,22 @@ def test_reset_preview_crop_clears_box_and_window_state() -> None:
     assert window._current_crop is None
     assert window.gif_preview_label._crop_label_rect is None
     assert window.gif_preview_label._crop_mode == "idle"
+
+    app.quit()
+
+
+def test_shortcut_manager_registers_expected_key_bindings() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    manager = ShortcutManager(window)
+
+    assert manager.shortcuts["left"].key() == Qt.Key.Key_Left
+    assert manager.shortcuts["right"].key() == Qt.Key.Key_Right
+    assert manager.shortcuts["play_pause"].key() == Qt.Key.Key_Space
+    assert manager.shortcuts["toggle_mute"].key() == Qt.Key.Key_M
+    assert manager.shortcuts["start_left"].key() == Qt.Key.Key_Z
+    assert manager.shortcuts["start_right"].key() == Qt.Key.Key_X
+    assert manager.shortcuts["end_left"].key() == Qt.Key.Key_B
+    assert manager.shortcuts["end_right"].key() == Qt.Key.Key_N
 
     app.quit()

@@ -11,31 +11,28 @@ from PySide6.QtGui import (
     QCloseEvent,
     QGuiApplication,
     QKeyEvent,
-    QKeySequence,
     QMovie,
     QPixmap,
-    QShortcut,
 )
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMainWindow,
     QPushButton,
     QSizePolicy,
-    QSpinBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
 from gifmaker.gui.crop_overlay_label import CropOverlayLabel
-from gifmaker.gui.marker_seek_slider import MarkerSeekSlider
+from gifmaker.gui.export_controls_panel import ExportControlsPanel
+from gifmaker.gui.preview_controller import PreviewController
+from gifmaker.gui.shortcut_manager import ShortcutManager
+from gifmaker.gui.video_preview_panel import VideoPreviewPanel
 from gifmaker.models.video_info import VideoInfo
 from gifmaker.services.gif_export import GifExportError, export_gif, export_webp
 from gifmaker.video.probe import VideoProbeError, probe_video
@@ -74,51 +71,23 @@ class MainWindow(QMainWindow):
         self._preview_frame_timer: QTimer | None = None
         self._preview_frame_index: int = 0
 
+        self.preview_controller = PreviewController(self)
         self._last_preview_settings: dict[str, float | int | str] | None = None
         self._current_crop: tuple[int, int, int, int] | None = None
         self._current_video_info: VideoInfo | None = None
 
         # --- Keyboard Shortcuts ---
-
-        self.left_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
-        self.left_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.left_shortcut.activated.connect(self._leftArrowPressed)
-
-        self.right_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
-        self.right_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.right_shortcut.activated.connect(self._rightArrowPressed)
-
-        self.play_button_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
-        self.play_button_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.play_button_shortcut.activated.connect(self.toggle_preview_playback)
-
-        self.mute_shortcut = QShortcut(QKeySequence(Qt.Key.Key_M), self)
-        self.mute_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.mute_shortcut.activated.connect(self.toggle_mute)
-
-        self.start_slider_left_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Z), self)
-        self.start_slider_left_shortcut.setContext(
-            Qt.ShortcutContext.ApplicationShortcut
-        )
-        self.start_slider_left_shortcut.activated.connect(self._startSliderLeftPressed)
-
-        self.start_slider_right_shortcut = QShortcut(QKeySequence(Qt.Key.Key_X), self)
-        self.start_slider_right_shortcut.setContext(
-            Qt.ShortcutContext.ApplicationShortcut
-        )
-        self.start_slider_right_shortcut.activated.connect(
-            self._startSliderRightPressed
-        )
-
-        self.end_slider_left_shortcut = QShortcut(QKeySequence(Qt.Key.Key_B), self)
-        self.end_slider_left_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.end_slider_left_shortcut.activated.connect(self._endSliderLeftPressed)
-
-        self.end_slider_right_shortcut = QShortcut(QKeySequence(Qt.Key.Key_N), self)
-        self.end_slider_right_shortcut.setContext(
-            Qt.ShortcutContext.ApplicationShortcut
-        )
-        self.end_slider_right_shortcut.activated.connect(self._endSliderRightPressed)
+        self.shortcut_manager = ShortcutManager(self)
+        self.left_shortcut = self.shortcut_manager.shortcuts["left"]
+        self.right_shortcut = self.shortcut_manager.shortcuts["right"]
+        self.play_button_shortcut = self.shortcut_manager.shortcuts["play_pause"]
+        self.mute_shortcut = self.shortcut_manager.shortcuts["toggle_mute"]
+        self.start_slider_left_shortcut = self.shortcut_manager.shortcuts["start_left"]
+        self.start_slider_right_shortcut = self.shortcut_manager.shortcuts[
+            "start_right"
+        ]
+        self.end_slider_left_shortcut = self.shortcut_manager.shortcuts["end_left"]
+        self.end_slider_right_shortcut = self.shortcut_manager.shortcuts["end_right"]
 
         # --- Render Window ---
 
@@ -131,15 +100,6 @@ class MainWindow(QMainWindow):
 
         logger.info("Main window initialized.")
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-
-        if event.key() == Qt.Key_Left:
-            self._leftArrowPressed()
-        elif event.key() == Qt.Key_Right:
-            self._rightArrowPressed()
-        else:
-            super().keyPressEvent(event)
-
     def create_menu(self) -> None:
         """Create the top-level menu structure."""
         menu_bar = self.menuBar()
@@ -150,163 +110,51 @@ class MainWindow(QMainWindow):
 
     def create_preview_panel(self) -> QGroupBox:
         """Create the expandable preview section."""
-        group = QGroupBox("Video Preview")
-        group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        layout = QVBoxLayout(group)
+        self.preview_panel = VideoPreviewPanel(self)
+        self.video_widget = self.preview_panel.video_widget
+        self.media_player = self.preview_panel.media_player
+        self.audio_output = self.preview_panel.audio_output
+        self.play_button = self.preview_panel.play_button
+        self.set_start_button = self.preview_panel.set_start_button
+        self.set_end_button = self.preview_panel.set_end_button
+        self.seek_slider = self.preview_panel.seek_slider
+        self.seek_time_label = self.preview_panel.seek_time_label
+        self.mute_button = self.preview_panel.mute_button
+        self.start_frame_label = self.preview_panel.start_frame_label
+        self.start_nudge_back_button = self.preview_panel.start_nudge_back_button
+        self.start_nudge_forward_button = self.preview_panel.start_nudge_forward_button
+        self.end_frame_label = self.preview_panel.end_frame_label
+        self.end_nudge_back_button = self.preview_panel.end_nudge_back_button
+        self.end_nudge_forward_button = self.preview_panel.end_nudge_forward_button
+        self.clip_selection_label = self.preview_panel.clip_selection_label
 
-        self.video_widget = QVideoWidget(group)
-        self.video_widget.setMinimumHeight(160)
-        self.video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.video_widget.setStyleSheet("border: 1px solid palette(mid);")
-        self.video_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        self.media_player = QMediaPlayer(group)
-        self.audio_output = QAudioOutput(group)
-        self.media_player.setAudioOutput(self.audio_output)
-        self.media_player.setVideoOutput(self.video_widget)
-        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
-        self.media_player.errorOccurred.connect(self.on_media_error)
-        self.media_player.durationChanged.connect(self.on_duration_changed)
-        self.media_player.positionChanged.connect(self.on_position_changed)
-        self.media_player.playbackStateChanged.connect(self._update_play_button_state)
-
-        controls_layout = QHBoxLayout()
-        self.play_button = QPushButton("▶ Play")
-        self.play_button.clicked.connect(self.toggle_preview_playback)
-
-        self.set_start_button = QPushButton("Set Start")
-        self.set_start_button.clicked.connect(self.set_clip_start)
-
-        self.set_end_button = QPushButton("Set End")
-        self.set_end_button.clicked.connect(self.set_clip_end)
-
-        self.seek_slider = MarkerSeekSlider(Qt.Horizontal)
-        self.seek_slider.setRange(0, 0)
-        self.seek_slider.set_total_frames(0)
-        self.seek_slider.sliderPressed.connect(self.on_seek_slider_pressed)
-        self.seek_slider.sliderMoved.connect(self.on_seek_slider_moved)
-        self.seek_slider.sliderReleased.connect(self.on_seek_slider_released)
-        self.seek_slider.selectionChanged.connect(self.on_scrub_selection_changed)
-
-        self.seek_time_label = QLabel("00:00:00 / 00:00:00")
-
-        self.mute_button = QPushButton("Mute")
-        self.mute_button.clicked.connect(self.toggle_mute)
-
-        controls_layout.addWidget(self.play_button)
-        controls_layout.addWidget(self.set_start_button)
-        controls_layout.addWidget(self.set_end_button)
-        controls_layout.addWidget(self.seek_slider, stretch=1)
-        controls_layout.addWidget(self.seek_time_label)
-        controls_layout.addWidget(self.mute_button)
-
-        self.start_frame_label = QLabel("Start: --:--:--.---")
-        self.start_nudge_back_button = QPushButton("−0.01")
-        self.start_nudge_back_button.clicked.connect(
-            lambda: self.nudge_start_frame(-self._seconds_to_frame(0.01))
-        )
-        marker_controls = QHBoxLayout()
-        self.start_nudge_forward_button = QPushButton("+0.01")
-        self.start_nudge_forward_button.clicked.connect(
-            lambda: self.nudge_start_frame(self._seconds_to_frame(0.01))
-        )
-
-        self.end_frame_label = QLabel("End: --:--:--.---")
-        self.end_nudge_back_button = QPushButton("−0.01")
-        self.end_nudge_back_button.clicked.connect(
-            lambda: self.nudge_end_frame(-self._seconds_to_frame(0.01))
-        )
-        self.end_nudge_forward_button = QPushButton("+0.01")
-        self.end_nudge_forward_button.clicked.connect(
-            lambda: self.nudge_end_frame(self._seconds_to_frame(0.01))
-        )
-
-        marker_controls.addWidget(self.start_frame_label)
-        marker_controls.addWidget(self.start_nudge_back_button)
-        marker_controls.addWidget(self.start_nudge_forward_button)
-        marker_controls.addSpacing(12)
-        marker_controls.addWidget(self.end_frame_label)
-        marker_controls.addWidget(self.end_nudge_back_button)
-        marker_controls.addWidget(self.end_nudge_forward_button)
-        marker_controls.addStretch(1)
-
-        self.clip_selection_label = QLabel()
+        self.preview_panel.bind_window(self)
         self.update_clip_selection_display()
-        # Put duration/selection summary on the same row as the marker nudges
-        marker_controls.addSpacing(12)
-        marker_controls.addWidget(self.clip_selection_label)
-
         self._update_play_button_state()
-
-        layout.addWidget(self.video_widget)
-        layout.addLayout(controls_layout)
-        layout.addLayout(marker_controls)
-        return group
+        return self.preview_panel
 
     def create_export_controls_row(self) -> QWidget:
         """Create compact, single-row precision and render settings controls."""
-        row = QWidget(self)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self.export_controls_panel = ExportControlsPanel(self)
+        self.export_start_input = self.export_controls_panel.export_start_input
+        self.export_end_input = self.export_controls_panel.export_end_input
+        self.export_fps_input = self.export_controls_panel.export_fps_input
+        self.export_width_input = self.export_controls_panel.export_width_input
+        self.generate_preview_button = (
+            self.export_controls_panel.generate_preview_button
+        )
+        self.apply_crop_button = self.export_controls_panel.apply_crop_button
+        self.reset_crop_button = self.export_controls_panel.reset_crop_button
+        self.gif_preview_play_button = (
+            self.export_controls_panel.gif_preview_play_button
+        )
+        self.gif_preview_pause_button = (
+            self.export_controls_panel.gif_preview_pause_button
+        )
+        self.export_format_combo = self.export_controls_panel.export_format_combo
 
-        self.export_start_input = QLineEdit()
-        self.export_start_input.setPlaceholderText("MM:SS:CC")
-        self.export_start_input.setFixedWidth(92)
-        self.export_start_input.editingFinished.connect(self.on_export_start_adjusted)
-
-        self.export_end_input = QLineEdit()
-        self.export_end_input.setPlaceholderText("MM:SS:CC")
-        self.export_end_input.setFixedWidth(92)
-        self.export_end_input.editingFinished.connect(self.on_export_end_adjusted)
-
-        self.export_fps_input = QSpinBox()
-        self.export_fps_input.setRange(1, 120)
-        self.export_fps_input.setValue(24)
-        self.export_fps_input.setFixedWidth(78)
-
-        self.export_width_input = QSpinBox()
-        self.export_width_input.setRange(1, 8192)
-        self.export_width_input.setValue(640)
-        self.export_width_input.setFixedWidth(92)
-
-        self.generate_preview_button = QPushButton("Generate Preview")
-        self.generate_preview_button.clicked.connect(self.generate_gif_preview)
-
-        self.apply_crop_button = QPushButton("Apply Crop")
-        self.apply_crop_button.clicked.connect(self.apply_crop_to_preview)
-
-        self.reset_crop_button = QPushButton("Reset Crop")
-        self.reset_crop_button.clicked.connect(self.reset_preview_crop)
-
-        # GIF preview play/pause controls (placed here to save vertical space)
-        self.gif_preview_play_button = QPushButton("Play")
-        self.gif_preview_play_button.clicked.connect(self.play_gif_preview)
-        self.gif_preview_pause_button = QPushButton("Pause")
-        self.gif_preview_pause_button.clicked.connect(self.pause_gif_preview)
-
-        layout.addWidget(QLabel("Start"))
-        layout.addWidget(self.export_start_input)
-        layout.addWidget(QLabel("End"))
-        layout.addWidget(self.export_end_input)
-        layout.addSpacing(8)
-        layout.addWidget(QLabel("FPS"))
-        layout.addWidget(self.export_fps_input)
-        layout.addWidget(QLabel("Width"))
-        layout.addWidget(self.export_width_input)
-        layout.addSpacing(8)
-        self.export_format_combo = QComboBox()
-        self.export_format_combo.addItems(["GIF", "WebP"])
-        layout.addWidget(QLabel("Format"))
-        layout.addWidget(self.export_format_combo)
-        layout.addSpacing(8)
-        layout.addWidget(self.gif_preview_play_button)
-        layout.addWidget(self.gif_preview_pause_button)
-        layout.addStretch(1)
-        layout.addWidget(self.generate_preview_button)
-        layout.addWidget(self.apply_crop_button)
-        layout.addWidget(self.reset_crop_button)
-
-        return row
+        self.export_controls_panel.bind_window(self)
+        return self.export_controls_panel
 
     def create_bottom_toolbar(self) -> QWidget:
         """Create a slim bottom toolbar for compact file info and exporting."""
@@ -359,7 +207,7 @@ class MainWindow(QMainWindow):
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
         self.gif_preview_label.cropChanged.connect(self._on_crop_changed)
         self.gif_preview_label.cropCleared.connect(self._on_crop_cleared)
-        # GIF preview area (play/pause controls are placed in the export row)
+        self.preview_controller.bind(self.gif_preview_label)
         preview_layout.addWidget(self.gif_preview_label)
 
         return preview_group
@@ -779,9 +627,17 @@ class MainWindow(QMainWindow):
         """Nudge the start marker back by one frame."""
         self.nudge_start_frame(-1)
 
+    def _startSetPressed(self) -> None:
+        """Set the start marker to the current playback position."""
+        self.set_clip_start()
+
     def _startSliderRightPressed(self) -> None:
         """Nudge the end marker forward by one frame."""
         self.nudge_start_frame(1)
+
+    def _endSetPressed(self) -> None:
+        """Set the end marker to the current playback position."""
+        self.set_clip_end()
 
     def _endSliderLeftPressed(self) -> None:
         """Nudge the start marker back by one frame."""
@@ -1018,53 +874,11 @@ class MainWindow(QMainWindow):
 
     def play_gif_preview(self) -> None:
         """Play the generated GIF preview."""
-        # If we have a cached frame playback, start or resume the timer
-        if self._preview_frame_cache:
-            if self._preview_frame_timer is None:
-                self._preview_frame_timer = QTimer(self)
-                self._preview_frame_timer.timeout.connect(self._on_cached_frame_timeout)
-                idx = self._preview_frame_index or 0
-                dur = (
-                    self._preview_frame_durations[idx]
-                    if self._preview_frame_durations
-                    else 100
-                )
-                self._preview_frame_timer.start(dur)
-                return
-
-            if not self._preview_frame_timer.isActive():
-                idx = self._preview_frame_index or 0
-                dur = (
-                    self._preview_frame_durations[idx]
-                    if self._preview_frame_durations
-                    else 100
-                )
-                self._preview_frame_timer.start(dur)
-            return
-
-        if self._preview_movie is None:
-            return
-
-        if self._preview_movie.state() == QMovie.MovieState.NotRunning:
-            self._preview_movie.start()
-            return
-
-        self._preview_movie.setPaused(False)
+        self.preview_controller.play()
 
     def pause_gif_preview(self) -> None:
         """Pause the generated GIF preview."""
-        # Pause cached playback if active
-        if self._preview_frame_cache and self._preview_frame_timer is not None:
-            try:
-                self._preview_frame_timer.stop()
-            except Exception:
-                pass
-            return
-
-        if self._preview_movie is None:
-            return
-
-        self._preview_movie.setPaused(True)
+        self.preview_controller.pause()
 
     def _on_crop_changed(self, x: int, y: int, w: int, h: int) -> None:
         self._current_crop = (x, y, w, h)
@@ -1121,214 +935,27 @@ class MainWindow(QMainWindow):
 
     def _set_preview_movie(self, gif_path: Path) -> None:
         """Display a generated GIF in the preview panel."""
-        movie = QMovie(str(gif_path))
-        if not movie.isValid():
-            raise RuntimeError("Generated preview GIF could not be loaded")
-
-        if self._preview_movie is not None:
-            self._preview_movie.stop()
-
-        # Cache frames and durations if possible to drive playback manually
-        movie.setCacheMode(QMovie.CacheMode.CacheAll)
-
-        # Try to compute a scaled size up-front to avoid resizing while
-        # playing which can cause visible flicker.
-        try:
-            movie.jumpToFrame(0)
-        except Exception:
-            pass
-
-        orig_rect = movie.frameRect()
-        if orig_rect.isValid() and orig_rect.width() > 0 and orig_rect.height() > 0:
-            label_size = self.gif_preview_label.size()
-            if label_size.width() > 0 and label_size.height() > 0:
-                scale_w = label_size.width() / orig_rect.width()
-                scale_h = label_size.height() / orig_rect.height()
-                scale = min(scale_w, scale_h)
-                new_w = max(1, int(orig_rect.width() * scale))
-                new_h = max(1, int(orig_rect.height() * scale))
-                movie.setScaledSize(QSize(new_w, new_h))
-
-        # Attempt to build a cached list of scaled QPixmaps and frame durations.
-        cached_frames: list[QPixmap] = []
-        cached_durations: list[int] = []
-        try:
-            total = movie.frameCount()
-        except Exception:
-            total = 0
-
-        if total and total > 0:
-            for i in range(total):
-                try:
-                    movie.jumpToFrame(i)
-                except Exception:
-                    break
-                pix = movie.currentPixmap()
-                if pix is None or pix.isNull():
-                    continue
-
-                scaled_size = movie.scaledSize()
-                if (
-                    scaled_size.isValid()
-                    and scaled_size.width() > 0
-                    and scaled_size.height() > 0
-                ):
-                    pix = pix.scaled(
-                        scaled_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                    )
-                else:
-                    label_size = self.gif_preview_label.size()
-                    if label_size.width() > 0 and label_size.height() > 0:
-                        pix = pix.scaled(
-                            label_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                        )
-
-                cached_frames.append(pix)
-                try:
-                    dur = movie.nextFrameDelay()
-                except Exception:
-                    dur = 100
-                cached_durations.append(max(1, int(dur)))
-
-        if len(cached_frames) > 1:
-            # Use timer-driven cached playback for smooth looping
-            self._stop_cached_preview()
-            self._preview_frame_cache = cached_frames
-            self._preview_frame_durations = cached_durations
-            self._preview_frame_index = 0
-            self.gif_preview_label.setPixmap(self._preview_frame_cache[0])
-            self._preview_frame_timer = QTimer(self)
-            self._preview_frame_timer.timeout.connect(self._on_cached_frame_timeout)
-            self._preview_frame_timer.start(self._preview_frame_durations[0])
-            try:
-                movie.stop()
-            except Exception:
-                pass
-            self._preview_movie = None
-            return
-
-        # Fallback to QMovie playback with a frame handler to loop seamlessly
-        try:
-            if self._preview_movie is not None:
-                self._preview_movie.frameChanged.disconnect(
-                    self._on_preview_frame_changed
-                )
-        except Exception:
-            pass
-
-        movie.frameChanged.connect(self._on_preview_frame_changed)
-        self.gif_preview_label.setMovie(movie)
-        movie.start()
-        self._preview_movie = movie
+        self.preview_controller.set_movie(gif_path)
 
     def _clear_preview_state(self, *, remove_temp_file: bool) -> None:
         """Clear preview UI state and optionally remove the temp GIF file."""
-        preview_file = self._preview_temp_file
-        # Stop any cached-frame playback first
-        try:
-            self._stop_cached_preview()
-        except Exception:
-            pass
-        if self._preview_movie is not None:
-            try:
-                self._preview_movie.frameChanged.disconnect(
-                    self._on_preview_frame_changed
-                )
-            except Exception:
-                pass
-            self._preview_movie.stop()
-            self._preview_movie = None
-
-        self.gif_preview_label.clear()
-        self.gif_preview_label.setText("Generate preview to display GIF")
-
-        self._preview_temp_file = None
-        self._last_preview_settings = None
-
-        if remove_temp_file and preview_file is not None:
-            self._remove_file_if_exists(preview_file)
+        self.preview_controller.clear(remove_temp_file=remove_temp_file)
 
     def _stop_cached_preview(self) -> None:
         """Stop and clear any QTimer-based cached preview playback."""
-        if self._preview_frame_timer is not None:
-            try:
-                self._preview_frame_timer.stop()
-                self._preview_frame_timer.timeout.disconnect(
-                    self._on_cached_frame_timeout
-                )
-            except Exception:
-                pass
-            self._preview_frame_timer = None
-
-        self._preview_frame_cache = None
-        self._preview_frame_durations = None
-        self._preview_frame_index = 0
+        self.preview_controller.stop_cached_preview()
 
     def _on_cached_frame_timeout(self) -> None:
         """Advance cached frame playback and schedule the next timeout."""
-        if not self._preview_frame_cache or not self._preview_frame_durations:
-            return
-
-        self._preview_frame_index = (self._preview_frame_index + 1) % len(
-            self._preview_frame_cache
-        )
-        pix = self._preview_frame_cache[self._preview_frame_index]
-        self.gif_preview_label.setPixmap(pix)
-        if self._preview_frame_timer is not None:
-            next_dur = self._preview_frame_durations[self._preview_frame_index]
-            self._preview_frame_timer.start(next_dur)
+        self.preview_controller.on_cached_frame_timeout()
 
     def _on_preview_frame_changed(self, frame: int) -> None:
-        """Handle frame changes to implement a seamless loop for QMovie.
-
-        Some PySide6 builds don't expose a setter for the loop count; when the
-        movie reports it has reached its last frame, jump back to frame 0 on the
-        next event loop tick to avoid visible flicker from stopping/starting.
-        """
-        movie = self._preview_movie
-        if movie is None:
-            return
-
-        try:
-            total = movie.frameCount()
-        except Exception:
-            total = 0
-
-        if total <= 0:
-            return
-
-        # If we're at the last frame, schedule a jump to frame 0 immediately
-        if frame >= total - 1:
-
-            def _restart(m=movie):
-                try:
-                    m.jumpToFrame(0)
-                    m.start()
-                except Exception:
-                    pass
-
-            QTimer.singleShot(0, _restart)
+        """Handle frame changes to implement a seamless loop for QMovie."""
+        self.preview_controller.on_preview_frame_changed(frame)
 
     def _update_preview_scaled_size(self) -> None:
         """Scale the current preview movie to fit the preview label while preserving aspect ratio."""
-        if self._preview_movie is None or not hasattr(self, "gif_preview_label"):
-            return
-
-        orig_rect = self._preview_movie.frameRect()
-        orig_size = orig_rect.size()
-        if orig_size.width() <= 0 or orig_size.height() <= 0:
-            return
-
-        label_size = self.gif_preview_label.size()
-        if label_size.width() <= 0 or label_size.height() <= 0:
-            return
-
-        scale_w = label_size.width() / orig_size.width()
-        scale_h = label_size.height() / orig_size.height()
-        scale = min(scale_w, scale_h)
-        new_w = max(1, int(orig_size.width() * scale))
-        new_h = max(1, int(orig_size.height() * scale))
-        self._preview_movie.setScaledSize(QSize(new_w, new_h))
+        self.preview_controller.update_scaled_size()
 
     def resizeEvent(self, event) -> None:
         """Respond to window resizes by updating preview scaling."""
@@ -1337,10 +964,7 @@ class MainWindow(QMainWindow):
 
     def _remove_file_if_exists(self, file_path: Path) -> None:
         """Best-effort removal for temporary preview artifacts."""
-        try:
-            file_path.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning("Failed to remove preview file '{}': {}", file_path, exc)
+        self.preview_controller.remove_temp_file_if_exists(file_path)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Handle app close by cleaning up preview temp files."""
