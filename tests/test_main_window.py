@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
 from gifmaker.gui.shortcut_manager import ShortcutManager
+from gifmaker.models.render_settings import RenderSettings, format_ms, parse_time_input
 
 
 def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
@@ -95,3 +96,21 @@ def test_shortcut_manager_registers_expected_key_bindings() -> None:
     assert manager.shortcuts["end_right"].key() == Qt.Key.Key_N
 
     app.quit()
+
+
+def test_render_settings_helpers_parse_and_format_time() -> None:
+    assert parse_time_input("1:02:03") == 62.03
+    assert parse_time_input("00:05:00") == 5.0
+    assert parse_time_input("00:00:05") == 0.05
+    assert format_ms(12345) == "00:12:34"
+
+    settings = RenderSettings(
+        start_seconds=1.5,
+        end_seconds=3.0,
+        fps=24,
+        width=320,
+        crop=(10, 20, 30, 40),
+    )
+    assert settings.start_seconds == 1.5
+    assert settings.end_seconds == 3.0
+    assert settings.width == 320

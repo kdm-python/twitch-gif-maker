@@ -33,6 +33,15 @@ from gifmaker.gui.export_controls_panel import ExportControlsPanel
 from gifmaker.gui.preview_controller import PreviewController
 from gifmaker.gui.shortcut_manager import ShortcutManager
 from gifmaker.gui.video_preview_panel import VideoPreviewPanel
+from gifmaker.models.render_settings import (
+    RenderSettings,
+    duration_to_frame_count,
+    format_ms,
+    format_timestamp_from_frame,
+    frame_to_ms,
+    ms_to_frame,
+    parse_time_input,
+)
 from gifmaker.models.video_info import VideoInfo
 from gifmaker.services.gif_export import GifExportError, export_gif, export_webp
 from gifmaker.video.probe import VideoProbeError, probe_video
@@ -77,6 +86,7 @@ class MainWindow(QMainWindow):
         self._current_video_info: VideoInfo | None = None
 
         # --- Keyboard Shortcuts ---
+
         self.shortcut_manager = ShortcutManager(self)
         self.left_shortcut = self.shortcut_manager.shortcuts["left"]
         self.right_shortcut = self.shortcut_manager.shortcuts["right"]
@@ -583,9 +593,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            start_seconds = self._parse_time_input(
-                self.export_start_input.text().strip()
-            )
+            start_seconds = parse_time_input(self.export_start_input.text().strip())
         except ValueError as exc:
             self.export_status_label.setText(f"Status: {exc}")
             self.export_start_input.setText(
@@ -602,7 +610,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            end_seconds = self._parse_time_input(self.export_end_input.text().strip())
+            end_seconds = parse_time_input(self.export_end_input.text().strip())
         except ValueError as exc:
             self.export_status_label.setText(f"Status: {exc}")
             self.export_end_input.setText(
@@ -650,54 +658,29 @@ class MainWindow(QMainWindow):
     def _update_seek_time_label(self, current_ms: int | None = None) -> None:
         """Update the current/total playback time text."""
         if current_ms is None:
-            current_ms = self._frame_to_ms(self.seek_slider.value())
-        total_ms = self._frame_to_ms(max(self.total_frames - 1, 0))
-        self.seek_time_label.setText(
-            f"{self._format_ms(current_ms)} / {self._format_ms(total_ms)}"
-        )
+            current_ms = frame_to_ms(self.seek_slider.value(), self.current_video_fps)
+        total_ms = frame_to_ms(max(self.total_frames - 1, 0), self.current_video_fps)
+        self.seek_time_label.setText(f"{format_ms(current_ms)} / {format_ms(total_ms)}")
 
     def _duration_to_frame_count(self, duration_ms: int) -> int:
         """Convert media duration to total frame count."""
-        if duration_ms <= 0 or self.current_video_fps <= 0:
-            return 0
-        duration_seconds = duration_ms / 1000.0
-        return max(1, round(duration_seconds * self.current_video_fps))
+        return duration_to_frame_count(duration_ms, self.current_video_fps)
 
     def _ms_to_frame(self, milliseconds: int) -> int:
         """Convert milliseconds to nearest frame index."""
-        if self.total_frames <= 0 or self.current_video_fps <= 0:
-            return 0
-        frame = round((milliseconds / 1000.0) * self.current_video_fps)
-        return max(0, min(frame, self.total_frames - 1))
+        return ms_to_frame(milliseconds, self.current_video_fps, self.total_frames)
 
     def _frame_to_ms(self, frame_index: int) -> int:
         """Convert frame index to milliseconds."""
-        if self.current_video_fps <= 0:
-            return 0
-        return round((frame_index / self.current_video_fps) * 1000.0)
+        return frame_to_ms(frame_index, self.current_video_fps)
 
     def _format_timestamp_from_frame(self, frame_index: int) -> str:
         """Format a frame index as HH:MM:SS.mmm."""
-        total_ms = self._frame_to_ms(frame_index)
-        total_seconds, milliseconds = divmod(max(total_ms, 0), 1000)
-        hours, remaining = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remaining, 60)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+        return format_timestamp_from_frame(frame_index, self.current_video_fps)
 
     def _format_ms(self, milliseconds: int) -> str:
         """Format milliseconds as MM:SS:CC or HH:MM:SS:CC."""
-        total_centiseconds = round(max(milliseconds, 0) / 10)
-
-        hours = total_centiseconds // 360_000
-        remaining_after_hours = total_centiseconds % 360_000
-        minutes = remaining_after_hours // 6_000
-        remaining_after_minutes = remaining_after_hours % 6_000
-        seconds = remaining_after_minutes // 100
-        centiseconds = remaining_after_minutes % 100
-
-        if hours > 0:
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}:{centiseconds:02d}"
-        return f"{minutes:02d}:{seconds:02d}:{centiseconds:02d}"
+        return format_ms(milliseconds)
 
     def export_gif_from_selection(self) -> None:
         """Export a selected time segment from the current video."""
@@ -801,11 +784,11 @@ class MainWindow(QMainWindow):
             export_gif(
                 self.current_video_path,
                 output_path,
-                start_seconds=render_settings["start_seconds"],
-                end_seconds=render_settings["end_seconds"],
-                fps=render_settings["fps"],
-                width=render_settings["width"],
-                crop=render_settings["crop"],
+                start_seconds=render_settings.start_seconds,
+                end_seconds=render_settings.end_seconds,
+                fps=render_settings.fps,
+                width=render_settings.width,
+                crop=render_settings.crop,
             )
         except GifExportError as exc:
             self.export_status_label.setText(f"Status: Export failed: {exc}")
@@ -848,11 +831,11 @@ class MainWindow(QMainWindow):
             export_gif(
                 self.current_video_path,
                 temp_file,
-                start_seconds=render_settings["start_seconds"],
-                end_seconds=render_settings["end_seconds"],
-                fps=render_settings["fps"],
-                width=render_settings["width"],
-                crop=render_settings["crop"],
+                start_seconds=render_settings.start_seconds,
+                end_seconds=render_settings.end_seconds,
+                fps=render_settings.fps,
+                width=render_settings.width,
+                crop=render_settings.crop,
             )
             self._set_preview_movie(temp_file)
         except (GifExportError, RuntimeError) as exc:
@@ -925,13 +908,13 @@ class MainWindow(QMainWindow):
         if end_seconds <= start_seconds:
             raise ValueError("End time must be greater than start time")
 
-        return {
-            "start_seconds": start_seconds,
-            "end_seconds": end_seconds,
-            "fps": self.export_fps_input.value(),
-            "width": self.export_width_input.value(),
-            "crop": self._current_crop,
-        }
+        return RenderSettings(
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+            fps=self.export_fps_input.value(),
+            width=self.export_width_input.value(),
+            crop=self._current_crop,
+        )
 
     def _set_preview_movie(self, gif_path: Path) -> None:
         """Display a generated GIF in the preview panel."""
@@ -970,67 +953,3 @@ class MainWindow(QMainWindow):
         """Handle app close by cleaning up preview temp files."""
         self._clear_preview_state(remove_temp_file=True)
         super().closeEvent(event)
-
-    def _parse_time_input(self, value: str) -> float:
-        """Parse seconds, MM:SS:CC, HH:MM:SS:CC, or legacy HH:MM:SS.xx."""
-        if ":" not in value:
-            seconds = float(value)
-            if seconds < 0:
-                raise ValueError("Time values must be non-negative")
-            return seconds
-
-        parts = value.split(":")
-        if len(parts) == 2:
-            minutes = int(parts[0])
-            seconds = float(parts[1])
-
-            if minutes < 0 or seconds < 0:
-                raise ValueError("Time values must be non-negative")
-            if seconds >= 60:
-                raise ValueError("Seconds must be less than 60")
-
-            return (minutes * 60) + seconds
-
-        if len(parts) == 3:
-            if "." in parts[2]:
-                # Backward-compatible parse for existing HH:MM:SS.xx entries.
-                hours = int(parts[0])
-                minutes = int(parts[1])
-                seconds = float(parts[2])
-
-                if hours < 0 or minutes < 0 or seconds < 0:
-                    raise ValueError("Time values must be non-negative")
-                if minutes >= 60 or seconds >= 60:
-                    raise ValueError("Minutes and seconds must be less than 60")
-
-                return (hours * 3600) + (minutes * 60) + seconds
-
-            minutes = int(parts[0])
-            seconds = int(parts[1])
-            centiseconds = int(parts[2])
-
-            if minutes < 0 or seconds < 0 or centiseconds < 0:
-                raise ValueError("Time values must be non-negative")
-            if seconds >= 60:
-                raise ValueError("Seconds must be less than 60")
-            if centiseconds >= 100:
-                raise ValueError("Centiseconds must be less than 100")
-
-            return (minutes * 60) + seconds + (centiseconds / 100)
-
-        if len(parts) == 4:
-            hours = int(parts[0])
-            minutes = int(parts[1])
-            seconds = int(parts[2])
-            centiseconds = int(parts[3])
-
-            if hours < 0 or minutes < 0 or seconds < 0 or centiseconds < 0:
-                raise ValueError("Time values must be non-negative")
-            if minutes >= 60 or seconds >= 60:
-                raise ValueError("Minutes and seconds must be less than 60")
-            if centiseconds >= 100:
-                raise ValueError("Centiseconds must be less than 100")
-
-            return (hours * 3600) + (minutes * 60) + seconds + (centiseconds / 100)
-
-        raise ValueError("Time must be seconds, MM:SS:CC, HH:MM:SS:CC, or HH:MM:SS.xx")
