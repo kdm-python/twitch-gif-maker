@@ -26,6 +26,7 @@ def export_gif(
     end_seconds: float,
     fps: int,
     width: int,
+    playback_speed: float = 1.0,
     crop: tuple[int, int, int, int] | None = None,
 ) -> None:
     """Export a GIF from a section of a video using FFmpeg."""
@@ -44,6 +45,8 @@ def export_gif(
         raise GifExportError("End time must be greater than start time")
     if fps <= 0:
         raise GifExportError("FPS must be greater than 0")
+    if playback_speed <= 0:
+        raise GifExportError("Playback speed must be greater than 0")
     if width <= 0:
         raise GifExportError("Width must be greater than 0")
     if crop is not None:
@@ -53,7 +56,8 @@ def export_gif(
                 "Crop dimensions must be positive with non-negative origin"
             )
 
-    vf = _build_vf_filters(fps, width, crop)
+    effective_fps = _effective_output_fps(fps, playback_speed)
+    vf = _build_vf_filters(effective_fps, width, crop)
 
     ffmpeg_cmd = [
         _ffmpeg_exe(),
@@ -93,6 +97,15 @@ def export_gif(
     logger.info("GIF export completed: {}", destination)
 
 
+def _effective_output_fps(base_fps: int, playback_speed: float) -> int:
+    """Compute the effective GIF frame rate from the base GIF FPS and playback speed."""
+    if base_fps <= 0:
+        raise GifExportError("FPS must be greater than 0")
+    if playback_speed <= 0:
+        raise GifExportError("Playback speed must be greater than 0")
+    return max(1, round(base_fps * playback_speed))
+
+
 def _build_vf_filters(
     fps: int,
     width: int,
@@ -113,6 +126,7 @@ def export_webp(
     end_seconds: float,
     fps: int,
     width: int,
+    playback_speed: float = 1.0,
     crop: tuple[int, int, int, int] | None = None,
 ) -> None:
     """Export an animated WebP from a section of a video using FFmpeg."""
@@ -131,6 +145,8 @@ def export_webp(
         raise GifExportError("End time must be greater than start time")
     if fps <= 0:
         raise GifExportError("FPS must be greater than 0")
+    if playback_speed <= 0:
+        raise GifExportError("Playback speed must be greater than 0")
     if width <= 0:
         raise GifExportError("Width must be greater than 0")
     if crop is not None:
@@ -140,7 +156,8 @@ def export_webp(
                 "Crop dimensions must be positive with non-negative origin"
             )
 
-    vf = _build_vf_filters(fps, width, crop)
+    effective_fps = _effective_output_fps(fps, playback_speed)
+    vf = _build_vf_filters(effective_fps, width, crop)
     logger.debug("*** WebP export VF FILTERS *** {}", vf)
 
     ffmpeg_cmd = [

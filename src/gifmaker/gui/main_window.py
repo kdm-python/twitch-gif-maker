@@ -6,11 +6,10 @@ import tempfile
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QGuiApplication,
-    QKeyEvent,
     QMovie,
     QPixmap,
 )
@@ -81,7 +80,8 @@ class MainWindow(QMainWindow):
         self._preview_frame_index: int = 0
 
         self.preview_controller = PreviewController(self)
-        self._last_preview_settings: dict[str, float | int | str] | None = None
+        self._last_preview_settings: RenderSettings | None = None
+        self._last_preview_source: str | None = None
         self._current_crop: tuple[int, int, int, int] | None = None
         self._current_video_info: VideoInfo | None = None
 
@@ -148,7 +148,7 @@ class MainWindow(QMainWindow):
         self.export_controls_panel = ExportControlsPanel(self)
         self.export_start_input = self.export_controls_panel.export_start_input
         self.export_end_input = self.export_controls_panel.export_end_input
-        self.export_fps_input = self.export_controls_panel.export_fps_input
+        self.playback_speed_combo = self.export_controls_panel.playback_speed_combo
         self.export_width_input = self.export_controls_panel.export_width_input
         self.generate_preview_button = (
             self.export_controls_panel.generate_preview_button
@@ -719,11 +719,11 @@ class MainWindow(QMainWindow):
                 export_webp(
                     self.current_video_path,
                     output_path,
-                    start_seconds=render_settings["start_seconds"],
-                    end_seconds=render_settings["end_seconds"],
-                    fps=render_settings["fps"],
-                    width=render_settings["width"],
-                    crop=render_settings["crop"],
+                    start_seconds=render_settings.start_seconds,
+                    end_seconds=render_settings.end_seconds,
+                    fps=render_settings.fps,
+                    width=render_settings.width,
+                    crop=render_settings.crop,
                 )
             except GifExportError as exc:
                 self.export_status_label.setText(f"Status: Export failed: {exc}")
@@ -748,10 +748,19 @@ class MainWindow(QMainWindow):
             logger.info("GIF export cancelled by user.")
             return
 
+        try:
+            render_settings = self._resolve_render_settings()
+        except ValueError as exc:
+            self.export_status_label.setText(f"Status: {exc}")
+            logger.error("Invalid export time input: {}", exc)
+            return
+
         if (
             self._preview_temp_file is not None
             and self._preview_temp_file.exists()
             and self._last_preview_settings is not None
+            and self._last_preview_source == self.current_video_path
+            and self._last_preview_settings == render_settings
         ):
             self.export_status_label.setText("Status: Exporting preview...")
             logger.info(
@@ -770,13 +779,6 @@ class MainWindow(QMainWindow):
             logger.info("GIF export complete: {}", output_path)
             return
 
-        try:
-            render_settings = self._resolve_render_settings()
-        except ValueError as exc:
-            self.export_status_label.setText(f"Status: {exc}")
-            logger.error("Invalid export time input: {}", exc)
-            return
-
         self.export_status_label.setText("Status: Exporting...")
         logger.info("Starting GIF export to '{}'", output_path)
 
@@ -788,6 +790,7 @@ class MainWindow(QMainWindow):
                 end_seconds=render_settings.end_seconds,
                 fps=render_settings.fps,
                 width=render_settings.width,
+                playback_speed=render_settings.playback_speed,
                 crop=render_settings.crop,
             )
         except GifExportError as exc:
@@ -835,6 +838,7 @@ class MainWindow(QMainWindow):
                 end_seconds=render_settings.end_seconds,
                 fps=render_settings.fps,
                 width=render_settings.width,
+                playback_speed=render_settings.playback_speed,
                 crop=render_settings.crop,
             )
             self._set_preview_movie(temp_file)
@@ -845,10 +849,8 @@ class MainWindow(QMainWindow):
             return
 
         self._preview_temp_file = temp_file
-        self._last_preview_settings = {
-            "source_path": self.current_video_path,
-            **render_settings,
-        }
+        self._last_preview_settings = render_settings
+        self._last_preview_source = self.current_video_path
         if previous_preview_file is not None and previous_preview_file != temp_file:
             self._remove_file_if_exists(previous_preview_file)
 
@@ -890,9 +892,7 @@ class MainWindow(QMainWindow):
 
         self.generate_gif_preview(force_crop=True)
 
-    def _resolve_render_settings(
-        self,
-    ) -> dict[str, float | int | tuple[int, int, int, int] | None]:
+    def _resolve_render_settings(self) -> RenderSettings:
         """Resolve render settings from timeline selection and compact controls."""
         if self.clip_start_time is None or self.clip_end_time is None:
             raise ValueError("Select a clip range on the timeline before export")
@@ -908,11 +908,16 @@ class MainWindow(QMainWindow):
         if end_seconds <= start_seconds:
             raise ValueError("End time must be greater than start time")
 
+        playback_speed = self.playback_speed_combo.currentData()
+        if playback_speed is None:
+            playback_speed = 1.0
+
         return RenderSettings(
             start_seconds=start_seconds,
             end_seconds=end_seconds,
-            fps=self.export_fps_input.value(),
+            fps=24,
             width=self.export_width_input.value(),
+            playback_speed=float(playback_speed),
             crop=self._current_crop,
         )
 

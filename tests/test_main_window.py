@@ -109,8 +109,21 @@ def test_render_settings_helpers_parse_and_format_time() -> None:
         end_seconds=3.0,
         fps=24,
         width=320,
+        playback_speed=1.5,
         crop=(10, 20, 30, 40),
     )
     assert settings.start_seconds == 1.5
     assert settings.end_seconds == 3.0
     assert settings.width == 320
+    assert settings.playback_speed == 1.5
+    assert settings.effective_fps == 36
+
+
+def test_main_window_has_playback_speed_control_and_not_fps_input() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert hasattr(window, "playback_speed_combo")
+    assert not hasattr(window, "export_fps_input")
+
+    app.quit()

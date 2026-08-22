@@ -11,9 +11,17 @@ class RenderSettings:
 
     start_seconds: float
     end_seconds: float
-    fps: int
-    width: int
+    fps: int = 24
+    width: int = 640
+    playback_speed: float = 1.0
     crop: tuple[int, int, int, int] | None = None
+
+    @property
+    def effective_fps(self) -> int:
+        """Return the actual GIF output framerate after speed adjustment."""
+        if self.playback_speed <= 0:
+            raise ValueError("Playback speed must be greater than 0")
+        return max(1, round(self.fps * self.playback_speed))
 
 
 def parse_time_input(value: str) -> float:

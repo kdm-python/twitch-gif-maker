@@ -30,12 +30,37 @@ def test_export_gif_builds_ffmpeg_command(tmp_path: Path) -> None:
 
     run_mock.assert_called_once()
     cmd = run_mock.call_args.args[0]
-    assert cmd[:2] == ["ffmpeg", "-y"]
+    assert cmd[1] == "-y"
+    assert cmd[0].endswith("ffmpeg")
     assert "-ss" in cmd
     assert "-to" in cmd
     assert str(input_video) in cmd
     assert str(output_gif) == cmd[-1]
     assert "fps=24,scale=640:-1:flags=lanczos" in cmd
+
+
+def test_export_gif_uses_effective_fps_for_playback_speed(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_gif = tmp_path / "output.gif"
+
+    with patch("gifmaker.services.gif_export.subprocess.run") as run_mock:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stderr = ""
+
+        export_gif(
+            input_video,
+            output_gif,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=24,
+            playback_speed=2.0,
+            width=320,
+        )
+
+    cmd = run_mock.call_args.args[0]
+    vf_arg = cmd[cmd.index("-vf") + 1]
+    assert "fps=48" in vf_arg
 
 
 def test_export_gif_raises_for_invalid_time_range(tmp_path: Path) -> None:
@@ -176,7 +201,8 @@ def test_export_webp_builds_ffmpeg_command(tmp_path: Path) -> None:
 
     run_mock.assert_called_once()
     cmd = run_mock.call_args.args[0]
-    assert cmd[:2] == ["ffmpeg", "-y"]
+    assert cmd[1] == "-y"
+    assert cmd[0].endswith("ffmpeg")
     assert "-ss" in cmd
     assert "-to" in cmd
     assert str(input_video) in cmd

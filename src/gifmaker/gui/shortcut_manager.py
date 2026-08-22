@@ -35,6 +35,9 @@ class ShortcutManager:
         self._register("end_right", Qt.Key.Key_N, window._endSliderRightPressed)
 
         # GIF preview controls
+        # (TODO) Generate GIF preview shortcut
+        # self._register("generate_preview", Qt.Key.Key_G, window.generate_preview)
+        # self._register("apply_crop", Qt.Key.Key_A, window.apply_crop)
 
     def _register(
         self,
