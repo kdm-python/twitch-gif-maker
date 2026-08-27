@@ -119,11 +119,18 @@ def test_render_settings_helpers_parse_and_format_time() -> None:
     assert settings.effective_fps == 36
 
 
-def test_main_window_has_playback_speed_control_and_not_fps_input() -> None:
+def test_main_window_has_player_playback_speed_control_and_selection_group() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
     assert hasattr(window, "playback_speed_combo")
+    assert hasattr(window.preview_panel, "playback_speed_combo")
+    assert window.preview_panel.playback_speed_combo.itemText(0) == "0.25×"
+    assert window.preview_panel.playback_speed_combo.itemText(1) == "0.5×"
+    assert window.preview_panel.playback_speed_combo.itemText(2) == "1×"
+    assert window.preview_panel.playback_speed_combo.itemText(3) == "1.5×"
+    assert window.preview_panel.playback_speed_combo.itemText(4) == "2×"
+    assert window.preview_panel.selection_group.title() == "Selection"
     assert not hasattr(window, "export_fps_input")
 
     app.quit()

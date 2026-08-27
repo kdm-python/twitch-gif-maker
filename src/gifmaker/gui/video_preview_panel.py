@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -38,8 +39,15 @@ class VideoPreviewPanel(QGroupBox):
 
         controls_layout = QHBoxLayout()
         self.play_button = QPushButton("▶ Play")
-        self.set_start_button = QPushButton("Set Start")
-        self.set_end_button = QPushButton("Set End")
+
+        self.playback_speed_combo = QComboBox()
+        self.playback_speed_combo.addItem("0.25×", 0.25)
+        self.playback_speed_combo.addItem("0.5×", 0.5)
+        self.playback_speed_combo.addItem("1×", 1.0)
+        self.playback_speed_combo.addItem("1.5×", 1.5)
+        self.playback_speed_combo.addItem("2×", 2.0)
+        self.playback_speed_combo.setCurrentIndex(2)
+        self.playback_speed_combo.setFixedWidth(88)
 
         self.seek_slider = MarkerSeekSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 0)
@@ -49,37 +57,54 @@ class VideoPreviewPanel(QGroupBox):
         self.mute_button = QPushButton("Mute")
 
         controls_layout.addWidget(self.play_button)
-        controls_layout.addWidget(self.set_start_button)
-        controls_layout.addWidget(self.set_end_button)
+        controls_layout.addWidget(QLabel("Playback Speed"))
+        controls_layout.addWidget(self.playback_speed_combo)
         controls_layout.addWidget(self.seek_slider, stretch=1)
         controls_layout.addWidget(self.seek_time_label)
         controls_layout.addWidget(self.mute_button)
 
-        self.start_frame_label = QLabel("Start: --:--:--.---")
+        self.start_label = QLabel("Start")
+        self.start_frame_label = QLabel("--:--:--.---")
         self.start_nudge_back_button = QPushButton("−0.01")
-        self.start_nudge_forward_button = QPushButton("+0.01")
+        self.start_nudge_forward_button = QPushButton("+.01")
+        self.set_start_button = QPushButton("Set Start")
 
-        self.end_frame_label = QLabel("End: --:--:--.---")
+        self.end_label = QLabel("End")
+        self.end_frame_label = QLabel("--:--:--.---")
         self.end_nudge_back_button = QPushButton("−0.01")
-        self.end_nudge_forward_button = QPushButton("+0.01")
+        self.end_nudge_forward_button = QPushButton("+.01")
+        self.set_end_button = QPushButton("Set End")
 
-        marker_controls = QHBoxLayout()
-        marker_controls.addWidget(self.start_frame_label)
-        marker_controls.addWidget(self.start_nudge_back_button)
-        marker_controls.addWidget(self.start_nudge_forward_button)
-        marker_controls.addSpacing(12)
-        marker_controls.addWidget(self.end_frame_label)
-        marker_controls.addWidget(self.end_nudge_back_button)
-        marker_controls.addWidget(self.end_nudge_forward_button)
-        marker_controls.addStretch(1)
+        self.selection_group = QGroupBox("Selection")
+        selection_layout = QVBoxLayout(self.selection_group)
+        selection_layout.setContentsMargins(12, 8, 12, 8)
+        selection_layout.setSpacing(6)
 
-        self.clip_selection_label = QLabel()
-        marker_controls.addSpacing(12)
-        marker_controls.addWidget(self.clip_selection_label)
+        start_row = QHBoxLayout()
+        start_row.addWidget(self.start_label)
+        start_row.addWidget(self.start_frame_label)
+        start_row.addWidget(self.start_nudge_back_button)
+        start_row.addWidget(self.start_nudge_forward_button)
+        start_row.addStretch(1)
+        start_row.addWidget(self.set_start_button)
+
+        end_row = QHBoxLayout()
+        end_row.addWidget(self.end_label)
+        end_row.addWidget(self.end_frame_label)
+        end_row.addWidget(self.end_nudge_back_button)
+        end_row.addWidget(self.end_nudge_forward_button)
+        end_row.addStretch(1)
+        end_row.addWidget(self.set_end_button)
+
+        selection_layout.addLayout(start_row)
+        selection_layout.addLayout(end_row)
+
+        self.clip_selection_label = QLabel("Selection: Not selected")
+        selection_layout.addWidget(self.clip_selection_label)
 
         self._layout.addWidget(self.video_widget)
         self._layout.addLayout(controls_layout)
-        self._layout.addLayout(marker_controls)
+        self._layout.addWidget(self.selection_group)
 
     def bind_window(self, window) -> None:
         """Wire this panel to the main-window controller."""
@@ -90,6 +115,9 @@ class VideoPreviewPanel(QGroupBox):
         self.media_player.playbackStateChanged.connect(window._update_play_button_state)
 
         self.play_button.clicked.connect(window.toggle_preview_playback)
+        self.playback_speed_combo.currentIndexChanged.connect(
+            window.on_preview_playback_speed_changed
+        )
         self.set_start_button.clicked.connect(window.set_clip_start)
         self.set_end_button.clicked.connect(window.set_clip_end)
 

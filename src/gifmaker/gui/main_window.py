@@ -125,11 +125,13 @@ class MainWindow(QMainWindow):
         self.media_player = self.preview_panel.media_player
         self.audio_output = self.preview_panel.audio_output
         self.play_button = self.preview_panel.play_button
+        self.preview_playback_speed_combo = self.preview_panel.playback_speed_combo
         self.set_start_button = self.preview_panel.set_start_button
         self.set_end_button = self.preview_panel.set_end_button
         self.seek_slider = self.preview_panel.seek_slider
         self.seek_time_label = self.preview_panel.seek_time_label
         self.mute_button = self.preview_panel.mute_button
+        self.selection_group = self.preview_panel.selection_group
         self.start_frame_label = self.preview_panel.start_frame_label
         self.start_nudge_back_button = self.preview_panel.start_nudge_back_button
         self.start_nudge_forward_button = self.preview_panel.start_nudge_forward_button
@@ -362,6 +364,17 @@ class MainWindow(QMainWindow):
         else:
             self.audio_output.setMuted(True)
 
+    def on_preview_playback_speed_changed(self) -> None:
+        """Apply the selected preview playback rate without affecting export timing."""
+        if not hasattr(self, "media_player"):
+            return
+
+        playback_speed = self.preview_playback_speed_combo.currentData()
+        if playback_speed is None:
+            playback_speed = 1.0
+
+        self.media_player.setPlaybackRate(float(playback_speed))
+
     def _seconds_to_frame(self, seconds: float) -> int:
         """Convert seconds to a frame delta using the current preview FPS."""
         if self.current_video_fps <= 0:
@@ -561,9 +574,9 @@ class MainWindow(QMainWindow):
             or self.clip_start_time is None
             or self.clip_end_time is None
         ):
-            self.start_frame_label.setText("Start: --:--:--.---")
-            self.end_frame_label.setText("End: --:--:--.---")
-            self.clip_selection_label.setText("Selection:\nNot selected")
+            self.start_frame_label.setText("--:--:--.---")
+            self.end_frame_label.setText("--:--:--.---")
+            self.clip_selection_label.setText("Selection: Not selected")
             if hasattr(self, "export_start_input") and hasattr(
                 self, "export_end_input"
             ):
@@ -574,9 +587,9 @@ class MainWindow(QMainWindow):
         start_text = self._format_timestamp_from_frame(self.start_frame)
         end_text = self._format_timestamp_from_frame(self.end_frame)
         duration = self.clip_end_time - self.clip_start_time
-        self.start_frame_label.setText(f"Start {start_text}")
-        self.end_frame_label.setText(f"End {end_text}")
-        self.clip_selection_label.setText(f"Duration: {duration:.3f}s")
+        self.start_frame_label.setText(start_text)
+        self.end_frame_label.setText(end_text)
+        self.clip_selection_label.setText(f"Selection: {duration:.3f}s")
 
         # Keep precision inputs synced to timeline markers for fine adjustments.
         if hasattr(self, "export_start_input") and hasattr(self, "export_end_input"):
