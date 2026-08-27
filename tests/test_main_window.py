@@ -90,6 +90,8 @@ def test_shortcut_manager_registers_expected_key_bindings() -> None:
     assert manager.shortcuts["right"].key() == Qt.Key.Key_Right
     assert manager.shortcuts["play_pause"].key() == Qt.Key.Key_Space
     assert manager.shortcuts["toggle_mute"].key() == Qt.Key.Key_M
+    assert manager.shortcuts["speed_up"].key() == Qt.Key.Key_Comma
+    assert manager.shortcuts["speed_down"].key() == Qt.Key.Key_Period
     assert manager.shortcuts["start_left"].key() == Qt.Key.Key_Z
     assert manager.shortcuts["start_right"].key() == Qt.Key.Key_X
     assert manager.shortcuts["end_left"].key() == Qt.Key.Key_B

@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
         self.right_shortcut = self.shortcut_manager.shortcuts["right"]
         self.play_button_shortcut = self.shortcut_manager.shortcuts["play_pause"]
         self.mute_shortcut = self.shortcut_manager.shortcuts["toggle_mute"]
+        self.speed_up_shortcut = self.shortcut_manager.shortcuts["speed_up"]
+        self.speed_down_shortcut = self.shortcut_manager.shortcuts["speed_down"]
         self.start_slider_left_shortcut = self.shortcut_manager.shortcuts["start_left"]
         self.start_slider_right_shortcut = self.shortcut_manager.shortcuts[
             "start_right"
@@ -374,6 +376,38 @@ class MainWindow(QMainWindow):
             playback_speed = 1.0
 
         self.media_player.setPlaybackRate(float(playback_speed))
+
+    def _set_preview_playback_speed(self, target_speed: float) -> None:
+        """Apply a preview playback speed from the allowed step list."""
+        if not hasattr(self, "media_player"):
+            return
+
+        allowed_rates = [0.25, 0.5, 1.0, 1.5, 2.0]
+        clamped_rate = min(allowed_rates, key=lambda rate: abs(rate - target_speed))
+        index = self.preview_playback_speed_combo.findData(clamped_rate)
+        if index >= 0:
+            self.preview_playback_speed_combo.setCurrentIndex(index)
+        self.media_player.setPlaybackRate(float(clamped_rate))
+
+    def speed_up_playback(self) -> None:
+        """Step the preview playback speed upward through the supported rates."""
+        rates = [0.25, 0.5, 1.0, 1.5, 2.0]
+        current = self.preview_playback_speed_combo.currentData() or 1.0
+        for rate in rates:
+            if rate > float(current):
+                self._set_preview_playback_speed(rate)
+                return
+        self._set_preview_playback_speed(rates[-1])
+
+    def speed_down_playback(self) -> None:
+        """Step the preview playback speed downward through the supported rates."""
+        rates = [0.25, 0.5, 1.0, 1.5, 2.0]
+        current = self.preview_playback_speed_combo.currentData() or 1.0
+        for rate in reversed(rates):
+            if rate < float(current):
+                self._set_preview_playback_speed(rate)
+                return
+        self._set_preview_playback_speed(rates[0])
 
     def _seconds_to_frame(self, seconds: float) -> int:
         """Convert seconds to a frame delta using the current preview FPS."""

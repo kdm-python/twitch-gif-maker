@@ -24,9 +24,8 @@ class ShortcutManager:
         self._register("right", Qt.Key.Key_Right, window._rightArrowPressed)
         self._register("play_pause", Qt.Key.Key_Space, window.toggle_preview_playback)
         self._register("toggle_mute", Qt.Key.Key_M, window.toggle_mute)
-        # (TODO) Speed up and speed down video keys
-        # self._register("speed_up", Qt.Key.Key_Comma, window.speed_up_playback)
-        # self._register("speed_down", Qt.Key.Key_Period, window.speed_down_playback)
+        self._register("speed_down", Qt.Key.Key_Comma, window.speed_down_playback)
+        self._register("speed_up", Qt.Key.Key_Period, window.speed_up_playback)
 
         # Start and end frame controls
         self._register("start_set", Qt.Key.Key_C, window._startSetPressed)
@@ -37,12 +36,11 @@ class ShortcutManager:
         self._register("end_right", Qt.Key.Key_N, window._endSliderRightPressed)
 
         # File management
-        # self._register("open_file", Qt.Key.Key_O, window.open_file)
+        self._register("open_file", Qt.Key.Key_O, window.open_file)
 
         # GIF preview controls
-        # (TODO) Generate GIF preview shortcut
-        # self._register("generate_preview", Qt.Key.Key_G, window.generate_preview)
-        # self._register("apply_crop", Qt.Key.Key_A, window.apply_crop)
+        self._register("generate_preview", Qt.Key.Key_G, window.generate_preview)
+        self._register("apply_crop", Qt.Key.Key_A, window.apply_crop)
 
     def _register(
         self,
