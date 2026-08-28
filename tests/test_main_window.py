@@ -4,6 +4,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
@@ -86,16 +87,22 @@ def test_shortcut_manager_registers_expected_key_bindings() -> None:
     window = MainWindow()
     manager = ShortcutManager(window)
 
-    assert manager.shortcuts["left"].key() == Qt.Key.Key_Left
-    assert manager.shortcuts["right"].key() == Qt.Key.Key_Right
-    assert manager.shortcuts["play_pause"].key() == Qt.Key.Key_Space
-    assert manager.shortcuts["toggle_mute"].key() == Qt.Key.Key_M
-    assert manager.shortcuts["speed_up"].key() == Qt.Key.Key_Comma
-    assert manager.shortcuts["speed_down"].key() == Qt.Key.Key_Period
-    assert manager.shortcuts["start_left"].key() == Qt.Key.Key_Z
-    assert manager.shortcuts["start_right"].key() == Qt.Key.Key_X
-    assert manager.shortcuts["end_left"].key() == Qt.Key.Key_B
-    assert manager.shortcuts["end_right"].key() == Qt.Key.Key_N
+    assert manager.shortcuts["left"].key() == QKeySequence(Qt.Key.Key_Left)
+    assert manager.shortcuts["right"].key() == QKeySequence(Qt.Key.Key_Right)
+    assert manager.shortcuts["play_pause"].key() == QKeySequence(Qt.Key.Key_Space)
+    assert manager.shortcuts["toggle_mute"].key() == QKeySequence(Qt.Key.Key_M)
+    assert manager.shortcuts["speed_down"].key() == QKeySequence(Qt.Key.Key_Comma)
+    assert manager.shortcuts["speed_up"].key() == QKeySequence(Qt.Key.Key_Period)
+    assert manager.shortcuts["start_set"].key() == QKeySequence(Qt.Key.Key_C)
+    assert manager.shortcuts["start_left"].key() == QKeySequence(Qt.Key.Key_Z)
+    assert manager.shortcuts["start_right"].key() == QKeySequence(Qt.Key.Key_X)
+    assert manager.shortcuts["end_set"].key() == QKeySequence(Qt.Key.Key_V)
+    assert manager.shortcuts["end_left"].key() == QKeySequence(Qt.Key.Key_B)
+    assert manager.shortcuts["end_right"].key() == QKeySequence(Qt.Key.Key_N)
+    assert manager.shortcuts["open_file"].key() == QKeySequence("Ctrl+O")
+    assert manager.shortcuts["export_file"].key() == QKeySequence("Ctrl+E")
+    assert manager.shortcuts["apply_crop"].key() == QKeySequence(Qt.Key.Key_A)
+    assert manager.shortcuts["reset_crop"].key() == QKeySequence(Qt.Key.Key_R)
 
     app.quit()
 

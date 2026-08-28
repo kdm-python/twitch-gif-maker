@@ -88,18 +88,28 @@ class MainWindow(QMainWindow):
         # --- Keyboard Shortcuts ---
 
         self.shortcut_manager = ShortcutManager(self)
+
         self.left_shortcut = self.shortcut_manager.shortcuts["left"]
         self.right_shortcut = self.shortcut_manager.shortcuts["right"]
         self.play_button_shortcut = self.shortcut_manager.shortcuts["play_pause"]
         self.mute_shortcut = self.shortcut_manager.shortcuts["toggle_mute"]
         self.speed_up_shortcut = self.shortcut_manager.shortcuts["speed_up"]
         self.speed_down_shortcut = self.shortcut_manager.shortcuts["speed_down"]
+
+        self.start_set_shortcut = self.shortcut_manager.shortcuts["start_set"]
         self.start_slider_left_shortcut = self.shortcut_manager.shortcuts["start_left"]
         self.start_slider_right_shortcut = self.shortcut_manager.shortcuts[
             "start_right"
         ]
+        self.end_set_shortcut = self.shortcut_manager.shortcuts["end_set"]
         self.end_slider_left_shortcut = self.shortcut_manager.shortcuts["end_left"]
         self.end_slider_right_shortcut = self.shortcut_manager.shortcuts["end_right"]
+
+        self.open_file_dialog_shortcut = self.shortcut_manager.shortcuts["open_file"]
+        self.export_file_shortcut = self.shortcut_manager.shortcuts["export_file"]
+
+        self.apply_crop_button_shortcut = self.shortcut_manager.shortcuts["apply_crop"]
+        self.reset_crop_shortcut = self.shortcut_manager.shortcuts["reset_crop"]
 
         # --- Render Window ---
 
@@ -728,6 +738,72 @@ class MainWindow(QMainWindow):
     def _format_ms(self, milliseconds: int) -> str:
         """Format milliseconds as MM:SS:CC or HH:MM:SS:CC."""
         return format_ms(milliseconds)
+
+    # --- Shortcut Functions ---
+
+    def _shortcut_left(self) -> None:
+        """Move playback position backward by one frame."""
+        self._leftArrowPressed()
+
+    def _shortcut_right(self) -> None:
+        """Move playback position forward by one frame."""
+        self._rightArrowPressed()
+
+    def _shortcut_play_pause(self) -> None:
+        """Toggle preview playback."""
+        self.toggle_preview_playback()
+
+    def _shortcut_toggle_mute(self) -> None:
+        """Toggle audio mute."""
+        self.toggle_mute()
+
+    def _shortcut_speed_down(self) -> None:
+        """Decrease the preview playback rate."""
+        self.speed_down_playback()
+
+    def _shortcut_speed_up(self) -> None:
+        """Increase the preview playback rate."""
+        self.speed_up_playback()
+
+    def _shortcut_start_set(self) -> None:
+        """Set the clip start to the current playback position."""
+        self._startSetPressed()
+
+    def _shortcut_start_left(self) -> None:
+        """Nudge the clip start left by one frame."""
+        self._startSliderLeftPressed()
+
+    def _shortcut_start_right(self) -> None:
+        """Nudge the clip start right by one frame."""
+        self._startSliderRightPressed()
+
+    def _shortcut_end_set(self) -> None:
+        """Set the clip end to the current playback position."""
+        self._endSetPressed()
+
+    def _shortcut_end_left(self) -> None:
+        """Nudge the clip end left by one frame."""
+        self._endSliderLeftPressed()
+
+    def _shortcut_end_right(self) -> None:
+        """Nudge the clip end right by one frame."""
+        self._endSliderRightPressed()
+
+    def _shortcut_open_file(self) -> None:
+        """Open a video file from the file dialog."""
+        self.open_file_dialog()
+
+    def _shortcut_export_file(self) -> None:
+        """Export the current selection and save it to disk."""
+        self.export_gif_from_selection()
+
+    def _shortcut_apply_crop(self) -> None:
+        """Apply the current crop selection to the preview."""
+        self.apply_crop_to_preview()
+
+    def _shortcut_reset_crop(self) -> None:
+        """Reset the active crop selection."""
+        self.reset_preview_crop()
 
     def export_gif_from_selection(self) -> None:
         """Export a selected time segment from the current video."""
