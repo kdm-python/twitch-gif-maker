@@ -259,22 +259,29 @@ class MainWindow(QMainWindow):
         self.preview_splitter.setStretchFactor(1, 2)
 
         root_layout.addWidget(self.preview_splitter, stretch=1)
-        root_layout.addWidget(self.create_export_controls_row())
+        root_layout.addWidget(self.create_export_controls_row(), stretch=1)
         root_layout.addWidget(self.create_bottom_toolbar())
 
         self.setCentralWidget(central)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "export_controls_panel"):
+            self.export_controls_panel._apply_layout_mode(self.width())
 
     def _fit_to_available_screen(self) -> None:
         """Keep initial and maximum window size inside available screen bounds."""
         screen = self.screen() or QGuiApplication.primaryScreen()
         if screen is None:
-            self.resize(1100, 760)
+            self.resize(1050, 760)
+            self.setMinimumSize(760, 540)
             return
 
         available = screen.availableGeometry()
-        target_width = min(1100, available.width())
+        target_width = min(1050, available.width())
         target_height = min(760, available.height())
 
+        self.setMinimumSize(760, 540)
         self.setMaximumSize(available.width(), available.height())
         self.resize(target_width, target_height)
 

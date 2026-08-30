@@ -66,12 +66,12 @@ class ShortcutManager:
         # File management
         self._register(
             "open_file",
-            QKeySequence(Qt.SHIFT | Qt.Key.Key_O),
+            QKeySequence(Qt.CTRL | Qt.Key.Key_O),
             window._shortcut_open_file,
         )
         self._register(
             "export_file",
-            QKeySequence(Qt.SHIFT | Qt.Key.Key_E),
+            QKeySequence(Qt.CTRL | Qt.Key.Key_E),
             window._shortcut_export_file,
         )
 

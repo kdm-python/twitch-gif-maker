@@ -27,6 +27,38 @@ def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
     app.quit()
 
 
+def test_main_window_allows_tighter_horizontal_minimum() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert window.minimumWidth() <= 760
+    assert window.minimumHeight() >= 500
+
+    app.quit()
+
+
+def test_export_controls_panel_compacts_action_buttons_below_inputs() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    panel = window.export_controls_panel
+
+    assert hasattr(panel, "primary_row")
+    assert hasattr(panel, "button_row")
+    assert panel.primary_row is not None
+    assert panel.button_row is not None
+
+    window.show()
+    window.resize(700, 120)
+    app.processEvents()
+    assert panel._compact_mode is True
+
+    window.resize(1100, 120)
+    app.processEvents()
+    assert panel._compact_mode is False
+
+    app.quit()
+
+
 def test_seek_slider_moves_media_player_to_frame_position_in_milliseconds() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()

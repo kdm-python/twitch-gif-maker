@@ -8,7 +8,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -16,10 +18,25 @@ from PySide6.QtWidgets import (
 class ExportControlsPanel(QWidget):
     """Compact export controls for render timing and target settings."""
 
+    COMPACT_WIDTH_THRESHOLD = 900
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._compact_mode = False
+
+        self.primary_layout = QHBoxLayout()
+        self.primary_layout.setContentsMargins(0, 0, 0, 0)
+        self.primary_layout.setSpacing(8)
+
+        self.secondary_layout = QHBoxLayout()
+        self.secondary_layout.setContentsMargins(0, 0, 0, 0)
+        self.secondary_layout.setSpacing(8)
+
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(0, 0, 0, 0)
+        self.root_layout.setSpacing(8)
 
         self.export_start_input = QLineEdit()
         self.export_start_input.setPlaceholderText("MM:SS:CC")
@@ -50,29 +67,71 @@ class ExportControlsPanel(QWidget):
         self.gif_preview_play_button = QPushButton("Play")
         self.gif_preview_pause_button = QPushButton("Pause")
 
-        self._layout.addWidget(QLabel("Start"))
-        self._layout.addWidget(self.export_start_input)
-        self._layout.addWidget(QLabel("End"))
-        self._layout.addWidget(self.export_end_input)
-        self._layout.addSpacing(8)
-        self._layout.addWidget(QLabel("Speed"))
-        self._layout.addWidget(self.playback_speed_combo)
-        self._layout.addWidget(QLabel("Width"))
-        self._layout.addWidget(self.export_width_input)
-        self._layout.addSpacing(8)
-
         self.export_format_combo = QComboBox()
         self.export_format_combo.addItems(["GIF", "WebP"])
-        self._layout.addWidget(QLabel("Format"))
-        self._layout.addWidget(self.export_format_combo)
-        self._layout.addSpacing(8)
 
-        self._layout.addWidget(self.gif_preview_play_button)
-        self._layout.addWidget(self.gif_preview_pause_button)
-        self._layout.addStretch(1)
-        self._layout.addWidget(self.generate_preview_button)
-        self._layout.addWidget(self.apply_crop_button)
-        self._layout.addWidget(self.reset_crop_button)
+        self.primary_row = QWidget(self)
+        self.primary_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.primary_row.setLayout(self.primary_layout)
+        self.button_row = QWidget(self)
+        self.button_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.button_row.setLayout(self.secondary_layout)
+
+        self.primary_layout.addWidget(QLabel("Start"))
+        self.primary_layout.addWidget(self.export_start_input)
+        self.primary_layout.addWidget(QLabel("End"))
+        self.primary_layout.addWidget(self.export_end_input)
+        self.primary_layout.addSpacing(8)
+        self.primary_layout.addWidget(QLabel("Speed"))
+        self.primary_layout.addWidget(self.playback_speed_combo)
+        self.primary_layout.addWidget(QLabel("Width"))
+        self.primary_layout.addWidget(self.export_width_input)
+        self.primary_layout.addSpacing(8)
+        self.primary_layout.addWidget(QLabel("Format"))
+        self.primary_layout.addWidget(self.export_format_combo)
+        self.primary_layout.addStretch(1)
+
+        self.secondary_layout.addWidget(self.gif_preview_play_button)
+        self.secondary_layout.addWidget(self.gif_preview_pause_button)
+        self.secondary_layout.addStretch(1)
+        self.secondary_layout.addWidget(self.generate_preview_button)
+        self.secondary_layout.addWidget(self.apply_crop_button)
+        self.secondary_layout.addWidget(self.reset_crop_button)
+
+        self.root_layout.addWidget(self.primary_row)
+        self.root_layout.addWidget(self.button_row)
+        self._compact_mode = False
+        self._apply_layout_mode()
+
+    def resize(self, *args, **kwargs):
+        result = super().resize(*args, **kwargs)
+        self._apply_layout_mode(
+            self.parentWidget().width() if self.parentWidget() else self.width()
+        )
+        return result
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_layout_mode(
+            self.parentWidget().width() if self.parentWidget() else self.width()
+        )
+
+    def _apply_layout_mode(self, width: int | None = None) -> None:
+        target_width = self.width() if width is None else width
+        if (
+            width is None
+            and self.parentWidget() is not None
+            and self.parentWidget().width() > 0
+        ):
+            target_width = self.parentWidget().width()
+        compact = target_width < self.COMPACT_WIDTH_THRESHOLD
+        if compact == self._compact_mode:
+            return
+
+        self._compact_mode = compact
+        self.button_row.setVisible(True)
+        self.button_row.setHidden(False)
+        self.root_layout.invalidate()
 
     def bind_window(self, window) -> None:
         """Wire this panel to the main-window controller."""
