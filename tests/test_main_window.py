@@ -37,6 +37,20 @@ def test_main_window_allows_tighter_horizontal_minimum() -> None:
     app.quit()
 
 
+def test_main_window_gives_more_space_to_preview_panels() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert window.preview_panel.video_widget.minimumHeight() <= 140
+    assert window.gif_preview_label.minimumHeight() <= 180
+
+    sizes = window.preview_splitter.sizes()
+    assert sizes[0] >= 200
+    assert sizes[1] >= 180
+
+    app.quit()
+
+
 def test_export_controls_panel_compacts_action_buttons_below_inputs() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
@@ -172,6 +186,7 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.preview_panel.playback_speed_combo.itemText(3) == "1.5×"
     assert window.preview_panel.playback_speed_combo.itemText(4) == "2×"
     assert window.preview_panel.selection_group.title() == "Selection"
+    assert window.preview_panel.selection_group.maximumHeight() <= 110
     assert not hasattr(window, "export_fps_input")
 
     app.quit()

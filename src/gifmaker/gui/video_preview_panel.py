@@ -25,9 +25,11 @@ class VideoPreviewPanel(QGroupBox):
         super().__init__("Video Preview", parent)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(8, 8, 8, 8)
+        self._layout.setSpacing(6)
 
         self.video_widget = QVideoWidget(self)
-        self.video_widget.setMinimumHeight(160)
+        self.video_widget.setMinimumHeight(140)
         self.video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_widget.setStyleSheet("border: 1px solid palette(mid);")
         self.video_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -76,11 +78,14 @@ class VideoPreviewPanel(QGroupBox):
         self.set_end_button = QPushButton("Set End")
 
         self.selection_group = QGroupBox("Selection")
+        self.selection_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.selection_group.setMaximumHeight(110)
         selection_layout = QVBoxLayout(self.selection_group)
-        selection_layout.setContentsMargins(12, 8, 12, 8)
-        selection_layout.setSpacing(6)
+        selection_layout.setContentsMargins(8, 5, 8, 6)
+        selection_layout.setSpacing(3)
 
         start_row = QHBoxLayout()
+        start_row.setSpacing(4)
         start_row.addWidget(self.start_label)
         start_row.addWidget(self.start_frame_label)
         start_row.addWidget(self.start_nudge_back_button)
@@ -89,6 +94,7 @@ class VideoPreviewPanel(QGroupBox):
         start_row.addWidget(self.set_start_button)
 
         end_row = QHBoxLayout()
+        end_row.setSpacing(4)
         end_row.addWidget(self.end_label)
         end_row.addWidget(self.end_frame_label)
         end_row.addWidget(self.end_nudge_back_button)
@@ -100,7 +106,19 @@ class VideoPreviewPanel(QGroupBox):
         selection_layout.addLayout(end_row)
 
         self.clip_selection_label = QLabel("Selection: Not selected")
+        self.clip_selection_label.setStyleSheet("font-size: 10px;")
         selection_layout.addWidget(self.clip_selection_label)
+
+        for button in (
+            self.start_nudge_back_button,
+            self.start_nudge_forward_button,
+            self.end_nudge_back_button,
+            self.end_nudge_forward_button,
+            self.set_start_button,
+            self.set_end_button,
+        ):
+            button.setFixedHeight(20)
+            button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         self._layout.addWidget(self.video_widget)
         self._layout.addLayout(controls_layout)

@@ -223,8 +223,7 @@ class MainWindow(QMainWindow):
 
         self.gif_preview_label = CropOverlayLabel("Generate preview to display GIF")
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
-        # Give the GIF preview a larger minimum height to prioritize it
-        self.gif_preview_label.setMinimumHeight(220)
+        self.gif_preview_label.setMinimumHeight(180)
         self.gif_preview_label.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
@@ -253,13 +252,12 @@ class MainWindow(QMainWindow):
         self.preview_splitter.setChildrenCollapsible(False)
         self.preview_splitter.addWidget(video_preview_group)
         self.preview_splitter.addWidget(gif_preview_group)
-        # Favor the GIF preview panel vertical space
-        self.preview_splitter.setSizes([260, 340])
+        self.preview_splitter.setSizes([500, 400])
         self.preview_splitter.setStretchFactor(0, 1)
-        self.preview_splitter.setStretchFactor(1, 2)
+        self.preview_splitter.setStretchFactor(1, 1)
 
         root_layout.addWidget(self.preview_splitter, stretch=1)
-        root_layout.addWidget(self.create_export_controls_row(), stretch=1)
+        root_layout.addWidget(self.create_export_controls_row())
         root_layout.addWidget(self.create_bottom_toolbar())
 
         self.setCentralWidget(central)

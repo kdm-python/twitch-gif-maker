@@ -124,13 +124,10 @@ class ExportControlsPanel(QWidget):
             and self.parentWidget().width() > 0
         ):
             target_width = self.parentWidget().width()
-        compact = target_width < self.COMPACT_WIDTH_THRESHOLD
-        if compact == self._compact_mode:
-            return
 
+        compact = target_width < self.COMPACT_WIDTH_THRESHOLD
         self._compact_mode = compact
         self.button_row.setVisible(True)
-        self.button_row.setHidden(False)
         self.root_layout.invalidate()
 
     def bind_window(self, window) -> None:
