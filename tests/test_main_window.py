@@ -190,3 +190,19 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert not hasattr(window, "export_fps_input")
 
     app.quit()
+
+
+def test_main_window_keeps_preview_controller_callback_adapters() -> None:
+    """Cached-frame preview playback must retain its Qt timer callbacks."""
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    with patch.object(window.preview_controller, "on_cached_frame_timeout") as cached:
+        window._on_cached_frame_timeout()
+        cached.assert_called_once_with()
+
+    with patch.object(window.preview_controller, "on_preview_frame_changed") as changed:
+        window._on_preview_frame_changed(3)
+        changed.assert_called_once_with(3)
+
+    app.quit()
