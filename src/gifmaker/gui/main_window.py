@@ -147,7 +147,8 @@ class MainWindow(QMainWindow):
         """Keep established control attributes available during the transition."""
         panel = self.export_controls_panel
         for name in (
-            "export_start_input", "export_end_input", "playback_speed_combo",
+            "export_start_input", "export_end_input", "output_speed_slider",
+            "output_speed_value_label", "output_fps_combo",
             "export_width_input", "generate_preview_button", "apply_crop_button",
             "reset_crop_button", "gif_preview_play_button", "gif_preview_pause_button",
             "export_format_combo",

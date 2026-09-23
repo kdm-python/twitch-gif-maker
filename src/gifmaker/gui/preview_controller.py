@@ -20,6 +20,36 @@ class PreviewController:
         """Attach the label that renders the generated preview."""
         self.preview_label = preview_label
 
+    def _rendered_speed(self) -> float:
+        """Return the speed baked into the currently cached preview."""
+        settings = self.window._last_preview_settings
+        return settings.playback_speed if settings is not None else 1.0
+
+    def _preview_speed(self) -> float:
+        return self.window.output_speed_slider.value() / 100
+
+    def _frame_delay(self, index: int) -> int:
+        """Return a cached frame's delay adjusted to the selected output speed."""
+        durations = self.window._preview_frame_durations
+        if not durations:
+            return 100
+        original_delay = durations[index]
+        return max(1, round(original_delay * self._rendered_speed() / self._preview_speed()))
+
+    def set_playback_speed(self, speed: float) -> None:
+        """Immediately retime the generated-animation preview without rendering."""
+        if speed <= 0:
+            return
+        if self.window._preview_frame_cache and self.window._preview_frame_timer is not None:
+            if self.window._preview_frame_timer.isActive():
+                self.window._preview_frame_timer.start(
+                    self._frame_delay(self.window._preview_frame_index)
+                )
+            return
+        movie = self.window._preview_movie
+        if movie is not None:
+            movie.setSpeed(round(100 * speed / self._rendered_speed()))
+
     def play(self) -> None:
         """Play the generated GIF preview."""
         if self.window._preview_frame_cache:
@@ -29,21 +59,13 @@ class PreviewController:
                     self.window._on_cached_frame_timeout
                 )
                 idx = self.window._preview_frame_index or 0
-                dur = (
-                    self.window._preview_frame_durations[idx]
-                    if self.window._preview_frame_durations
-                    else 100
-                )
+                dur = self._frame_delay(idx)
                 self.window._preview_frame_timer.start(dur)
                 return
 
             if not self.window._preview_frame_timer.isActive():
                 idx = self.window._preview_frame_index or 0
-                dur = (
-                    self.window._preview_frame_durations[idx]
-                    if self.window._preview_frame_durations
-                    else 100
-                )
+                dur = self._frame_delay(idx)
                 self.window._preview_frame_timer.start(dur)
             return
 
@@ -206,7 +228,7 @@ class PreviewController:
                 self.window._on_cached_frame_timeout
             )
             self.window._preview_frame_timer.start(
-                self.window._preview_frame_durations[0]
+                self._frame_delay(0)
             )
             try:
                 movie.stop()
@@ -273,9 +295,7 @@ class PreviewController:
         if self.preview_label is not None:
             self.preview_label.setPixmap(pix)
         if self.window._preview_frame_timer is not None:
-            next_dur = self.window._preview_frame_durations[
-                self.window._preview_frame_index
-            ]
+            next_dur = self._frame_delay(self.window._preview_frame_index)
             self.window._preview_frame_timer.start(next_dur)
 
     def on_preview_frame_changed(self, frame: int) -> None:

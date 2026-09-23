@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -9,6 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -46,14 +48,22 @@ class ExportControlsPanel(QWidget):
         self.export_end_input.setPlaceholderText("MM:SS:CC")
         self.export_end_input.setFixedWidth(92)
 
-        self.playback_speed_combo = QComboBox()
-        self.playback_speed_combo.addItem("0.5×", 0.5)
-        self.playback_speed_combo.addItem("1×", 1.0)
-        self.playback_speed_combo.addItem("1.5×", 1.5)
-        self.playback_speed_combo.addItem("2×", 2.0)
-        self.playback_speed_combo.addItem("3×", 3.0)
-        self.playback_speed_combo.setCurrentIndex(1)
-        self.playback_speed_combo.setFixedWidth(88)
+        self.output_speed_slider = QSlider(Qt.Horizontal)
+        self.output_speed_slider.setRange(25, 300)
+        self.output_speed_slider.setSingleStep(5)
+        self.output_speed_slider.setPageStep(25)
+        self.output_speed_slider.setTickInterval(25)
+        self.output_speed_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.output_speed_slider.setValue(100)
+        self.output_speed_slider.setFixedWidth(150)
+        self.output_speed_value_label = QLabel("1×")
+        self.output_speed_value_label.setMinimumWidth(42)
+
+        self.output_fps_combo = QComboBox()
+        for fps in (12, 15, 24, 30, 60):
+            self.output_fps_combo.addItem(f"{fps} FPS", fps)
+        self.output_fps_combo.setCurrentIndex(self.output_fps_combo.findData(24))
+        self.output_fps_combo.setFixedWidth(86)
 
         self.export_width_input = QSpinBox()
         self.export_width_input.setRange(1, 8192)
@@ -82,8 +92,11 @@ class ExportControlsPanel(QWidget):
         self.primary_layout.addWidget(QLabel("End"))
         self.primary_layout.addWidget(self.export_end_input)
         self.primary_layout.addSpacing(8)
-        self.primary_layout.addWidget(QLabel("Speed"))
-        self.primary_layout.addWidget(self.playback_speed_combo)
+        self.primary_layout.addWidget(QLabel("Output speed"))
+        self.primary_layout.addWidget(self.output_speed_slider)
+        self.primary_layout.addWidget(self.output_speed_value_label)
+        self.primary_layout.addWidget(QLabel("FPS"))
+        self.primary_layout.addWidget(self.output_fps_combo)
         self.primary_layout.addWidget(QLabel("Width"))
         self.primary_layout.addWidget(self.export_width_input)
         self.primary_layout.addSpacing(8)
@@ -134,6 +147,7 @@ class ExportControlsPanel(QWidget):
         """Wire this panel to the main-window controller."""
         self.export_start_input.editingFinished.connect(window.on_export_start_adjusted)
         self.export_end_input.editingFinished.connect(window.on_export_end_adjusted)
+        self.output_speed_slider.valueChanged.connect(window.on_output_speed_changed)
         self.generate_preview_button.clicked.connect(window.generate_gif_preview)
         self.apply_crop_button.clicked.connect(window.apply_crop_to_preview)
         self.reset_crop_button.clicked.connect(window.reset_preview_crop)

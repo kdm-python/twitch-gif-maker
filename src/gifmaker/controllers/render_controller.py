@@ -29,15 +29,22 @@ class RenderController:
             raise ValueError("Select a clip range on the timeline before export")
         if window.clip_end_time <= window.clip_start_time:
             raise ValueError("End time must be greater than start time")
-        speed = window.playback_speed_combo.currentData() or 1.0
+        speed = window.output_speed_slider.value() / 100
+        fps = window.output_fps_combo.currentData() or 24
         return RenderSettings(
             start_seconds=window.clip_start_time,
             end_seconds=window.clip_end_time,
-            fps=24,
+            fps=int(fps),
             width=window.export_width_input.value(),
             playback_speed=float(speed),
             crop=window._current_crop,
         )
+
+    def on_output_speed_changed(self, value: int) -> None:
+        """Update output-speed feedback and apply it to the live GIF preview."""
+        speed = value / 100
+        self.window.output_speed_value_label.setText(f"{speed:g}×")
+        self.window.preview_controller.set_playback_speed(speed)
 
     def export_gif_from_selection(self) -> None:
         """Prompt for a target file and export the current selection."""

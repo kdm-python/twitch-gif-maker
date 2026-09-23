@@ -171,7 +171,7 @@ def test_render_settings_helpers_parse_and_format_time() -> None:
     assert settings.end_seconds == 3.0
     assert settings.width == 320
     assert settings.playback_speed == 1.5
-    assert settings.effective_fps == 36
+    assert settings.effective_fps == 24
 
 
 def test_main_window_has_player_playback_speed_control_and_selection_group() -> None:
@@ -187,7 +187,33 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.preview_panel.playback_speed_combo.itemText(4) == "2×"
     assert window.preview_panel.selection_group.title() == "Selection"
     assert window.preview_panel.selection_group.maximumHeight() <= 110
-    assert not hasattr(window, "export_fps_input")
+    assert window.output_speed_slider.minimum() == 25
+    assert window.output_speed_slider.maximum() == 300
+    assert window.output_speed_slider.value() == 100
+    assert window.output_fps_combo.currentData() == 24
+
+    app.quit()
+
+
+def test_output_settings_resolve_and_retime_the_generated_preview() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.clip_start_time = 1.0
+    window.clip_end_time = 3.0
+    window.output_speed_slider.setValue(150)
+    window.output_fps_combo.setCurrentIndex(window.output_fps_combo.findData(30))
+
+    settings = window.render_controller._resolve_render_settings()
+
+    assert window.output_speed_value_label.text() == "1.5×"
+    assert settings.playback_speed == 1.5
+    assert settings.fps == 30
+
+    window._preview_frame_durations = [120]
+    window._last_preview_settings = RenderSettings(
+        start_seconds=1.0, end_seconds=3.0, playback_speed=1.0
+    )
+    assert window.preview_controller._frame_delay(0) == 80
 
     app.quit()
 

@@ -56,8 +56,7 @@ def export_gif(
                 "Crop dimensions must be positive with non-negative origin"
             )
 
-    effective_fps = _effective_output_fps(fps, playback_speed)
-    vf = _build_vf_filters(effective_fps, width, crop)
+    vf = _build_vf_filters(fps, width, crop, playback_speed)
 
     ffmpeg_cmd = [
         _ffmpeg_exe(),
@@ -97,21 +96,14 @@ def export_gif(
     logger.info("GIF export completed: {}", destination)
 
 
-def _effective_output_fps(base_fps: int, playback_speed: float) -> int:
-    """Compute the effective GIF frame rate from the base GIF FPS and playback speed."""
-    if base_fps <= 0:
-        raise GifExportError("FPS must be greater than 0")
-    if playback_speed <= 0:
-        raise GifExportError("Playback speed must be greater than 0")
-    return max(1, round(base_fps * playback_speed))
-
-
 def _build_vf_filters(
     fps: int,
     width: int,
     crop: tuple[int, int, int, int] | None,
+    playback_speed: float = 1.0,
 ) -> str:
-    vf = f"fps={fps},scale={width}:-1:flags=lanczos"
+    timing = "" if playback_speed == 1.0 else f"setpts=PTS/{playback_speed:g},"
+    vf = f"{timing}fps={fps},scale={width}:-1:flags=lanczos"
     if crop is not None:
         cx, cy, cw, ch = crop
         vf = f"crop={cw}:{ch}:{cx}:{cy},{vf}"
@@ -156,8 +148,7 @@ def export_webp(
                 "Crop dimensions must be positive with non-negative origin"
             )
 
-    effective_fps = _effective_output_fps(fps, playback_speed)
-    vf = _build_vf_filters(effective_fps, width, crop)
+    vf = _build_vf_filters(fps, width, crop, playback_speed)
     logger.debug("*** WebP export VF FILTERS *** {}", vf)
 
     ffmpeg_cmd = [

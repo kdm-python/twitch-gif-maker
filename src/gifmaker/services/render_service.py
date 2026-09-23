@@ -36,8 +36,6 @@ class RenderService:
             end_seconds=settings.end_seconds,
             fps=settings.fps,
             width=settings.width,
-            # Preserve the established WebP behaviour during this structural
-            # refactor.  GIF is currently the only format with output speed.
-            playback_speed=settings.playback_speed if output_format == "GIF" else 1.0,
+            playback_speed=settings.playback_speed,
             crop=settings.crop,
         )

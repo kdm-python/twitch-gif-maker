@@ -18,10 +18,13 @@ class RenderSettings:
 
     @property
     def effective_fps(self) -> int:
-        """Return the actual GIF output framerate after speed adjustment."""
+        """Return the selected output frame rate.
+
+        Playback speed changes timestamps, not the number of frames per second.
+        """
         if self.playback_speed <= 0:
             raise ValueError("Playback speed must be greater than 0")
-        return max(1, round(self.fps * self.playback_speed))
+        return self.fps
 
 
 def parse_time_input(value: str) -> float:

@@ -39,7 +39,7 @@ def test_export_gif_builds_ffmpeg_command(tmp_path: Path) -> None:
     assert "fps=24,scale=640:-1:flags=lanczos" in cmd
 
 
-def test_export_gif_uses_effective_fps_for_playback_speed(tmp_path: Path) -> None:
+def test_export_gif_uses_timestamp_adjustment_for_playback_speed(tmp_path: Path) -> None:
     input_video = tmp_path / "input.mp4"
     input_video.write_text("fake video")
     output_gif = tmp_path / "output.gif"
@@ -60,7 +60,8 @@ def test_export_gif_uses_effective_fps_for_playback_speed(tmp_path: Path) -> Non
 
     cmd = run_mock.call_args.args[0]
     vf_arg = cmd[cmd.index("-vf") + 1]
-    assert "fps=48" in vf_arg
+    assert "setpts=PTS/2" in vf_arg
+    assert "fps=24" in vf_arg
 
 
 def test_export_gif_raises_for_invalid_time_range(tmp_path: Path) -> None:
@@ -213,6 +214,30 @@ def test_export_webp_builds_ffmpeg_command(tmp_path: Path) -> None:
     assert "-loop" in cmd
     assert cmd[cmd.index("-loop") + 1] == "0"
     assert "-an" in cmd
+
+
+def test_export_webp_uses_timestamp_adjustment_for_playback_speed(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_webp = tmp_path / "output.webp"
+
+    with patch("gifmaker.services.gif_export.subprocess.run") as run_mock:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stderr = ""
+        export_webp(
+            input_video,
+            output_webp,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=30,
+            playback_speed=0.5,
+            width=320,
+        )
+
+    cmd = run_mock.call_args.args[0]
+    vf_arg = cmd[cmd.index("-vf") + 1]
+    assert "setpts=PTS/0.5" in vf_arg
+    assert "fps=30" in vf_arg
 
 
 def test_export_webp_raises_for_wrong_extension(tmp_path: Path) -> None:
