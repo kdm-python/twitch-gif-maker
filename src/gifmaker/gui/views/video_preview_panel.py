@@ -19,7 +19,12 @@ from gifmaker.gui.views.marker_seek_slider import MarkerSeekSlider
 
 
 class VideoPreviewPanel(QGroupBox):
-    """Panel containing the video preview, seek bar, and selection controls."""
+    """Panel containing the video preview and its playback controls.
+
+    Selection controls are exposed as ``selection_group`` but are placed by the
+    main window beneath the shared preview area.  Keeping them out of this
+    panel lets the video canvas use the height it needs.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__("Video Preview", parent)
@@ -78,37 +83,32 @@ class VideoPreviewPanel(QGroupBox):
         self.set_end_button = QPushButton("Set End")
 
         self.selection_group = QGroupBox("Selection")
-        self.selection_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        self.selection_group.setMaximumHeight(110)
-        selection_layout = QVBoxLayout(self.selection_group)
-        selection_layout.setContentsMargins(8, 5, 8, 6)
-        selection_layout.setSpacing(3)
-
-        start_row = QHBoxLayout()
-        start_row.setSpacing(4)
-        start_row.addWidget(self.start_label)
-        start_row.addWidget(self.start_frame_label)
-        start_row.addWidget(self.start_nudge_back_button)
-        start_row.addWidget(self.start_nudge_forward_button)
-        start_row.addStretch(1)
-        start_row.addWidget(self.set_start_button)
-
-        end_row = QHBoxLayout()
-        end_row.setSpacing(4)
-        end_row.addWidget(self.end_label)
-        end_row.addWidget(self.end_frame_label)
-        end_row.addWidget(self.end_nudge_back_button)
-        end_row.addWidget(self.end_nudge_forward_button)
-        end_row.addStretch(1)
-        end_row.addWidget(self.set_end_button)
-
-        selection_layout.addLayout(start_row)
-        selection_layout.addLayout(end_row)
+        self.selection_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.selection_group.setMaximumHeight(64)
+        selection_layout = QHBoxLayout(self.selection_group)
+        selection_layout.setContentsMargins(8, 4, 8, 4)
+        selection_layout.setSpacing(6)
 
         self.clip_selection_label = QLabel("Selection: Not selected")
         self.clip_selection_label.setStyleSheet("font-size: 10px;")
+
+        selection_layout.addWidget(self.start_label)
+        selection_layout.addWidget(self.start_frame_label)
+        selection_layout.addWidget(self.start_nudge_back_button)
+        selection_layout.addWidget(self.start_nudge_forward_button)
+        selection_layout.addWidget(self.set_start_button)
+        selection_layout.addSpacing(10)
+        selection_layout.addWidget(self.end_label)
+        selection_layout.addWidget(self.end_frame_label)
+        selection_layout.addWidget(self.end_nudge_back_button)
+        selection_layout.addWidget(self.end_nudge_forward_button)
+        selection_layout.addWidget(self.set_end_button)
+        selection_layout.addStretch(1)
         selection_layout.addWidget(self.clip_selection_label)
 
+        selection_button_height = max(
+            self.play_button.sizeHint().height(), self.mute_button.sizeHint().height()
+        )
         for button in (
             self.start_nudge_back_button,
             self.start_nudge_forward_button,
@@ -117,12 +117,11 @@ class VideoPreviewPanel(QGroupBox):
             self.set_start_button,
             self.set_end_button,
         ):
-            button.setFixedHeight(20)
+            button.setFixedHeight(selection_button_height)
             button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         self._layout.addWidget(self.video_widget)
         self._layout.addLayout(controls_layout)
-        self._layout.addWidget(self.selection_group)
 
     def bind_window(self, window) -> None:
         """Wire this panel to the main-window controller."""

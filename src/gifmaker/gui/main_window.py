@@ -98,12 +98,11 @@ class MainWindow(QMainWindow):
             menu_bar.addMenu(name)
 
     def build_layout(self) -> None:
-        """Assemble views while keeping their visual hierarchy unchanged."""
+        """Assemble a preview-first workspace with secondary controls below it."""
         central = QWidget(self)
         layout = QVBoxLayout(central)
-        open_button = QPushButton("Open Video File")
-        open_button.clicked.connect(self.open_file_dialog)
-        layout.addWidget(open_button)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
         self.preview_panel = VideoPreviewPanel(self)
         self._expose_video_preview_widgets()
@@ -118,11 +117,17 @@ class MainWindow(QMainWindow):
         self.preview_splitter.setObjectName("preview_splitter")
         self.preview_splitter.setChildrenCollapsible(False)
         self.preview_splitter.addWidget(self.preview_panel)
+        # Keep the existing Selection box intact, but place it between the two
+        # preview surfaces so it reads as the bridge between source and output.
+        self.preview_splitter.addWidget(self.preview_panel.selection_group)
         self.preview_splitter.addWidget(gif_preview)
-        self.preview_splitter.setSizes([500, 400])
+        self.preview_splitter.setSizes([500, 64, 400])
         self.preview_splitter.setStretchFactor(0, 1)
-        self.preview_splitter.setStretchFactor(1, 1)
+        self.preview_splitter.setStretchFactor(1, 0)
+        self.preview_splitter.setStretchFactor(2, 1)
 
+        # Keep the video and GIF canvases as the stretchable regions around the
+        # compact selection strip.
         layout.addWidget(self.preview_splitter, stretch=1)
         layout.addWidget(self.export_controls_panel)
         layout.addWidget(self.create_bottom_toolbar())
@@ -172,7 +177,7 @@ class MainWindow(QMainWindow):
         return group
 
     def create_bottom_toolbar(self) -> QWidget:
-        """Create the unchanged file-metadata and primary-export footer."""
+        """Create the file-metadata footer and its primary file actions."""
         toolbar = QWidget(self)
         layout = QHBoxLayout(toolbar)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -189,9 +194,12 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         info.addWidget(self.video_file_label)
         info.addLayout(row)
+        self.open_button = QPushButton("Open Video File")
+        self.open_button.clicked.connect(self.open_file_dialog)
         self.export_button = QPushButton("Export")
         self.export_button.clicked.connect(self.export_gif_from_selection)
         layout.addLayout(info, stretch=1)
+        layout.addWidget(self.open_button)
         layout.addWidget(self.export_button)
         return toolbar
 

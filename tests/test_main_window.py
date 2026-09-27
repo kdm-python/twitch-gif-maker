@@ -17,12 +17,13 @@ def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
     window = MainWindow()
 
     central_layout = window.centralWidget().layout()
-    resizable_container = central_layout.itemAt(1).widget()
+    resizable_container = window.preview_splitter
 
     assert isinstance(resizable_container, QSplitter)
-    assert resizable_container.count() == 2
+    assert resizable_container.count() == 3
     assert isinstance(resizable_container.widget(0), QGroupBox)
     assert isinstance(resizable_container.widget(1), QGroupBox)
+    assert isinstance(resizable_container.widget(2), QGroupBox)
 
     app.quit()
 
@@ -46,7 +47,8 @@ def test_main_window_gives_more_space_to_preview_panels() -> None:
 
     sizes = window.preview_splitter.sizes()
     assert sizes[0] >= 200
-    assert sizes[1] >= 180
+    assert sizes[1] >= 40
+    assert sizes[2] >= 180
 
     app.quit()
 
@@ -186,7 +188,9 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.preview_panel.playback_speed_combo.itemText(3) == "1.5×"
     assert window.preview_panel.playback_speed_combo.itemText(4) == "2×"
     assert window.preview_panel.selection_group.title() == "Selection"
-    assert window.preview_panel.selection_group.maximumHeight() <= 110
+    assert window.preview_panel.selection_group.maximumHeight() <= 64
+    assert window.preview_panel.selection_group.parentWidget() is window.preview_splitter
+    assert window.open_button.text() == "Open Video File"
     assert window.output_speed_slider.minimum() == 25
     assert window.output_speed_slider.maximum() == 300
     assert window.output_speed_slider.value() == 100
