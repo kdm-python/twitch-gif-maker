@@ -21,7 +21,7 @@ Keyboard mappings:
     - Shift+O: Open a video file
     - Shift+E: Export the GIF
 - GIF preview controls
-    - g: Generate a GIF preview
+    - Shift+G: Generate a GIF preview
     - a: Apply the current crop to the GIF preview
     - r: Reset the crop on the GIF preview
 
@@ -74,7 +74,13 @@ class ShortcutManager:
             QKeySequence(Qt.SHIFT | Qt.Key.Key_E),
             window._shortcut_export_file,
         )
-
+        
+        # self._register(
+        #     "generate_gif_preview",
+        #     QKeySequence(Qt.SHIFT | Qt.Key.Key_G),
+        #     window._shortcut_export_file,
+        # )
+        
         # GIF preview controls
         self._register("apply_crop", Qt.Key.Key_A, window._shortcut_apply_crop)
         self._register("reset_crop", Qt.Key.Key_R, window._shortcut_reset_crop)

@@ -12,7 +12,6 @@ from gifmaker.models.render_settings import (
     format_timestamp_from_frame,
     frame_to_ms,
     ms_to_frame,
-    parse_time_input,
 )
 from gifmaker.video.probe import VideoProbeError, probe_video
 
@@ -96,6 +95,7 @@ class VideoSessionController:
         window.gif_preview_label.clear_crop()
         window.current_video_fps = max(window._pending_video_info.fps, 1.0)
         self.update_video_info_from_model(window._pending_video_path, window._pending_video_info)
+        window.render_controller.on_crop_dimensions_changed()
         self._clear_pending_preview_state()
         self._update_play_button_state()
         logger.info("Video loaded successfully.")
@@ -271,38 +271,10 @@ class VideoSessionController:
             window.start_frame_label.setText("--:--:--.---")
             window.end_frame_label.setText("--:--:--.---")
             window.clip_selection_label.setText("Selection: Not selected")
-            window.export_start_input.setText("")
-            window.export_end_input.setText("")
             return
         window.start_frame_label.setText(self._format_timestamp_from_frame(window.start_frame))
         window.end_frame_label.setText(self._format_timestamp_from_frame(window.end_frame))
         window.clip_selection_label.setText(f"Selection: {window.clip_end_time - window.clip_start_time:.3f}s")
-        window.export_start_input.setText(format_ms(self._frame_to_ms(window.start_frame)))
-        window.export_end_input.setText(format_ms(self._frame_to_ms(window.end_frame)))
-
-    def on_export_start_adjusted(self) -> None:
-        """Map a manually entered start timestamp back to the timeline."""
-        self._apply_time_input(self.window.export_start_input, is_start=True)
-
-    def on_export_end_adjusted(self) -> None:
-        """Map a manually entered end timestamp back to the timeline."""
-        self._apply_time_input(self.window.export_end_input, is_start=False)
-
-    def _apply_time_input(self, input_widget, *, is_start: bool) -> None:
-        if self.window.total_frames <= 0 or not input_widget.text().strip():
-            return
-        try:
-            frame = self._ms_to_frame(round(parse_time_input(input_widget.text().strip()) * 1000))
-        except ValueError as exc:
-            self.window.export_status_label.setText(f"Status: {exc}")
-            frame = self.window.start_frame if is_start else self.window.end_frame
-            input_widget.setText(format_ms(self._frame_to_ms(frame)))
-            return
-        if is_start:
-            self.window.seek_slider.set_selection(frame, self.window.end_frame)
-        else:
-            self.window.seek_slider.set_selection(self.window.start_frame, frame)
-
     def _leftArrowPressed(self) -> None:
         """Seek one source frame backwards."""
         frame_ms = int(1000 / self.window.current_video_fps)

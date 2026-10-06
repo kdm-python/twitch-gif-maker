@@ -9,6 +9,31 @@ from pathlib import Path
 from loguru import logger
 
 
+QUALITY_PRESETS: dict[str, dict[str, str | int]] = {
+    "small": {
+        "label": "Small file",
+        "gif_colors": 128,
+        "gif_dither": "bayer:bayer_scale=3",
+        "webp_quality": 50,
+        "webp_preset": "picture",
+    },
+    "balanced": {
+        "label": "Balanced",
+        "gif_colors": 256,
+        "gif_dither": "sierra2_4a",
+        "webp_quality": 75,
+        "webp_preset": "photo",
+    },
+    "high": {
+        "label": "High quality",
+        "gif_colors": 256,
+        "gif_dither": "sierra2_4a",
+        "webp_quality": 90,
+        "webp_preset": "photo",
+    },
+}
+
+
 def _ffmpeg_exe() -> str:
     # GIFMAKER_FFMPEG lets a dev point at a capable build (e.g. ffmpeg-full)
     return os.environ.get("GIFMAKER_FFMPEG", "ffmpeg")
@@ -26,10 +51,12 @@ def export_gif(
     end_seconds: float,
     fps: int,
     width: int,
+    height: int | None = None,
     playback_speed: float = 1.0,
+    quality_preset: str = "balanced",
     crop: tuple[int, int, int, int] | None = None,
 ) -> None:
-    """Export a GIF from a section of a video using FFmpeg."""
+    """Export a palette-optimised GIF from a section of video using FFmpeg."""
     source = Path(input_path)
     destination = Path(output_path)
 
@@ -49,6 +76,10 @@ def export_gif(
         raise GifExportError("Playback speed must be greater than 0")
     if width <= 0:
         raise GifExportError("Width must be greater than 0")
+    if height is not None and height <= 0:
+        raise GifExportError("Height must be greater than 0")
+    if quality_preset not in QUALITY_PRESETS:
+        raise GifExportError(f"Unknown quality preset: {quality_preset}")
     if crop is not None:
         cx, cy, cw, ch = crop
         if cx < 0 or cy < 0 or cw <= 0 or ch <= 0:
@@ -56,7 +87,10 @@ def export_gif(
                 "Crop dimensions must be positive with non-negative origin"
             )
 
-    vf = _build_vf_filters(fps, width, crop, playback_speed)
+    target_height = height if height is not None else -1
+    filters = _build_gif_filter_complex(
+        fps, width, target_height, crop, playback_speed, quality_preset
+    )
 
     ffmpeg_cmd = [
         _ffmpeg_exe(),
@@ -67,12 +101,10 @@ def export_gif(
         str(end_seconds),
         "-i",
         str(source),
-        "-vf",
-        vf,
-        "-quality",
-        "90",
-        "-preset",
-        "photo",
+        "-filter_complex",
+        filters,
+        "-loop",
+        "0",
         str(destination),
     ]
 
@@ -99,15 +131,34 @@ def export_gif(
 def _build_vf_filters(
     fps: int,
     width: int,
+    height: int,
     crop: tuple[int, int, int, int] | None,
     playback_speed: float = 1.0,
 ) -> str:
     timing = "" if playback_speed == 1.0 else f"setpts=PTS/{playback_speed:g},"
-    vf = f"{timing}fps={fps},scale={width}:-1:flags=lanczos"
+    vf = f"{timing}fps={fps},scale={width}:{height}:flags=lanczos"
     if crop is not None:
         cx, cy, cw, ch = crop
         vf = f"crop={cw}:{ch}:{cx}:{cy},{vf}"
     return vf
+
+
+def _build_gif_filter_complex(
+    fps: int,
+    width: int,
+    height: int,
+    crop: tuple[int, int, int, int] | None,
+    playback_speed: float,
+    quality_preset: str,
+) -> str:
+    """Build a palette-generation graph for high-quality animated GIF output."""
+    preset = QUALITY_PRESETS[quality_preset]
+    video_filters = _build_vf_filters(fps, width, height, crop, playback_speed)
+    return (
+        f"[0:v]{video_filters},split[gif][palette_source];"
+        f"[palette_source]palettegen=max_colors={preset['gif_colors']}:stats_mode=diff[palette];"
+        f"[gif][palette]paletteuse=dither={preset['gif_dither']}"
+    )
 
 
 def export_webp(
@@ -118,7 +169,9 @@ def export_webp(
     end_seconds: float,
     fps: int,
     width: int,
+    height: int | None = None,
     playback_speed: float = 1.0,
+    quality_preset: str = "balanced",
     crop: tuple[int, int, int, int] | None = None,
 ) -> None:
     """Export an animated WebP from a section of a video using FFmpeg."""
@@ -141,6 +194,10 @@ def export_webp(
         raise GifExportError("Playback speed must be greater than 0")
     if width <= 0:
         raise GifExportError("Width must be greater than 0")
+    if height is not None and height <= 0:
+        raise GifExportError("Height must be greater than 0")
+    if quality_preset not in QUALITY_PRESETS:
+        raise GifExportError(f"Unknown quality preset: {quality_preset}")
     if crop is not None:
         cx, cy, cw, ch = crop
         if cx < 0 or cy < 0 or cw <= 0 or ch <= 0:
@@ -148,7 +205,9 @@ def export_webp(
                 "Crop dimensions must be positive with non-negative origin"
             )
 
-    vf = _build_vf_filters(fps, width, crop, playback_speed)
+    target_height = height if height is not None else -1
+    vf = _build_vf_filters(fps, width, target_height, crop, playback_speed)
+    preset = QUALITY_PRESETS[quality_preset]
     logger.debug("*** WebP export VF FILTERS *** {}", vf)
 
     ffmpeg_cmd = [
@@ -165,9 +224,9 @@ def export_webp(
         "-c:v",
         "libwebp_anim",
         "-quality",
-        "90",
+        str(preset["webp_quality"]),
         "-preset",
-        "photo",
+        str(preset["webp_preset"]),
         "-loop",
         "0",
         "-an",

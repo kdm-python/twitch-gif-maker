@@ -36,7 +36,10 @@ def test_export_gif_builds_ffmpeg_command(tmp_path: Path) -> None:
     assert "-to" in cmd
     assert str(input_video) in cmd
     assert str(output_gif) == cmd[-1]
-    assert "fps=24,scale=640:-1:flags=lanczos" in cmd
+    filter_graph = cmd[cmd.index("-filter_complex") + 1]
+    assert "fps=24,scale=640:-1:flags=lanczos" in filter_graph
+    assert "palettegen=max_colors=256" in filter_graph
+    assert "paletteuse=dither=sierra2_4a" in filter_graph
 
 
 def test_export_gif_uses_timestamp_adjustment_for_playback_speed(tmp_path: Path) -> None:
@@ -59,9 +62,9 @@ def test_export_gif_uses_timestamp_adjustment_for_playback_speed(tmp_path: Path)
         )
 
     cmd = run_mock.call_args.args[0]
-    vf_arg = cmd[cmd.index("-vf") + 1]
-    assert "setpts=PTS/2" in vf_arg
-    assert "fps=24" in vf_arg
+    filter_graph = cmd[cmd.index("-filter_complex") + 1]
+    assert "setpts=PTS/2" in filter_graph
+    assert "fps=24" in filter_graph
 
 
 def test_export_gif_raises_for_invalid_time_range(tmp_path: Path) -> None:
@@ -128,9 +131,9 @@ def test_export_gif_with_crop_prepends_crop_filter(tmp_path: Path) -> None:
         )
 
     cmd = run_mock.call_args.args[0]
-    vf_arg = cmd[cmd.index("-vf") + 1]
-    assert vf_arg.startswith("crop=200:200:10:20,")
-    assert ",fps=12," in vf_arg
+    filter_graph = cmd[cmd.index("-filter_complex") + 1]
+    assert filter_graph.startswith("[0:v]crop=200:200:10:20,")
+    assert ",fps=12," in filter_graph
 
 
 def test_export_gif_without_crop_omits_crop_filter(tmp_path: Path) -> None:
@@ -152,8 +155,36 @@ def test_export_gif_without_crop_omits_crop_filter(tmp_path: Path) -> None:
         )
 
     cmd = run_mock.call_args.args[0]
-    vf_arg = cmd[cmd.index("-vf") + 1]
-    assert vf_arg == "fps=12,scale=320:-1:flags=lanczos"
+    filter_graph = cmd[cmd.index("-filter_complex") + 1]
+    assert "[0:v]fps=12,scale=320:-1:flags=lanczos," in filter_graph
+    assert "crop=" not in filter_graph
+
+
+def test_export_gif_quality_preset_changes_palette_settings(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_gif = tmp_path / "output.gif"
+
+    with patch("gifmaker.services.gif_export.subprocess.run") as run_mock:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stderr = ""
+        export_gif(
+            input_video,
+            output_gif,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=12,
+            width=320,
+            height=180,
+            quality_preset="small",
+        )
+
+    filter_graph = run_mock.call_args.args[0][
+        run_mock.call_args.args[0].index("-filter_complex") + 1
+    ]
+    assert "scale=320:180:flags=lanczos" in filter_graph
+    assert "palettegen=max_colors=128" in filter_graph
+    assert "paletteuse=dither=bayer:bayer_scale=3" in filter_graph
 
 
 def test_export_gif_raises_for_invalid_crop(tmp_path: Path) -> None:

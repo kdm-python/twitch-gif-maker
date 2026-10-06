@@ -31,7 +31,7 @@ from gifmaker.gui.shortcut_manager import ShortcutManager
 from gifmaker.gui.views.crop_overlay_label import CropOverlayLabel
 from gifmaker.gui.views.export_controls_panel import ExportControlsPanel
 from gifmaker.gui.views.video_preview_panel import VideoPreviewPanel
-from gifmaker.models.render_settings import RenderSettings
+from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.video_info import VideoInfo
 
 
@@ -82,6 +82,8 @@ class MainWindow(QMainWindow):
         self._preview_frame_index = 0
         self._last_preview_settings: RenderSettings | None = None
         self._last_preview_source: str | None = None
+        self._last_preview_spec: RenderSpec | None = None
+        self._render_revision = 0
 
     def __getattr__(self, name: str):
         """Expose controller callbacks to Qt views without duplicating forwarding code."""
@@ -132,7 +134,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.export_controls_panel)
         layout.addWidget(self.create_bottom_toolbar())
         self.setCentralWidget(central)
+        self.selection_changed.connect(self.render_controller.on_render_setting_changed)
         self.video_session_controller.update_clip_selection_display()
+        self.render_controller.update_output_summary()
 
     def _expose_video_preview_widgets(self) -> None:
         """Keep established widget attributes available to controllers and integrations."""
@@ -152,9 +156,10 @@ class MainWindow(QMainWindow):
         """Keep established control attributes available during the transition."""
         panel = self.export_controls_panel
         for name in (
-            "export_start_input", "export_end_input", "output_speed_slider",
+            "output_speed_slider",
             "output_speed_value_label", "output_fps_combo",
-            "export_width_input", "generate_preview_button", "apply_crop_button",
+            "export_width_input", "export_height_input", "aspect_ratio_lock",
+            "original_size_button", "quality_preset_combo", "generate_preview_button", "apply_crop_button",
             "reset_crop_button", "gif_preview_play_button", "gif_preview_pause_button",
             "export_format_combo",
         ):
@@ -188,9 +193,11 @@ class MainWindow(QMainWindow):
         self.video_file_label = QLabel("No file loaded")
         self.video_meta_label = QLabel("Duration: - | Resolution: - | FPS: - | Codec: -")
         self.export_status_label = QLabel("Status: -")
+        self.output_summary_label = QLabel("Output: Select a clip range")
         row = QHBoxLayout()
         row.addWidget(self.video_meta_label)
         row.addWidget(self.export_status_label)
+        row.addWidget(self.output_summary_label)
         row.addStretch(1)
         info.addWidget(self.video_file_label)
         info.addLayout(row)

@@ -5,9 +5,9 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -40,14 +40,6 @@ class ExportControlsPanel(QWidget):
         self.root_layout.setContentsMargins(0, 0, 0, 0)
         self.root_layout.setSpacing(8)
 
-        self.export_start_input = QLineEdit()
-        self.export_start_input.setPlaceholderText("MM:SS:CC")
-        self.export_start_input.setFixedWidth(92)
-
-        self.export_end_input = QLineEdit()
-        self.export_end_input.setPlaceholderText("MM:SS:CC")
-        self.export_end_input.setFixedWidth(92)
-
         self.output_speed_slider = QSlider(Qt.Horizontal)
         self.output_speed_slider.setRange(25, 300)
         self.output_speed_slider.setSingleStep(5)
@@ -70,6 +62,22 @@ class ExportControlsPanel(QWidget):
         self.export_width_input.setValue(640)
         self.export_width_input.setFixedWidth(92)
 
+        self.export_height_input = QSpinBox()
+        self.export_height_input.setRange(1, 8192)
+        self.export_height_input.setValue(360)
+        self.export_height_input.setFixedWidth(92)
+
+        self.aspect_ratio_lock = QCheckBox("Lock")
+        self.aspect_ratio_lock.setChecked(True)
+        self.original_size_button = QPushButton("Original")
+
+        self.quality_preset_combo = QComboBox()
+        self.quality_preset_combo.addItem("Small file", "small")
+        self.quality_preset_combo.addItem("Balanced", "balanced")
+        self.quality_preset_combo.addItem("High quality", "high")
+        self.quality_preset_combo.setCurrentIndex(1)
+        self.quality_preset_combo.setFixedWidth(112)
+
         self.generate_preview_button = QPushButton("Generate Preview")
         self.apply_crop_button = QPushButton("Apply Crop")
         self.reset_crop_button = QPushButton("Reset Crop")
@@ -87,25 +95,29 @@ class ExportControlsPanel(QWidget):
         self.button_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.button_row.setLayout(self.secondary_layout)
 
-        self.primary_layout.addWidget(QLabel("Start"))
-        self.primary_layout.addWidget(self.export_start_input)
-        self.primary_layout.addWidget(QLabel("End"))
-        self.primary_layout.addWidget(self.export_end_input)
+        self.primary_layout.addWidget(QLabel("Preview"))
+        self.primary_layout.addWidget(self.gif_preview_play_button)
+        self.primary_layout.addWidget(self.gif_preview_pause_button)
         self.primary_layout.addSpacing(8)
         self.primary_layout.addWidget(QLabel("Output speed"))
         self.primary_layout.addWidget(self.output_speed_slider)
         self.primary_layout.addWidget(self.output_speed_value_label)
         self.primary_layout.addWidget(QLabel("FPS"))
         self.primary_layout.addWidget(self.output_fps_combo)
-        self.primary_layout.addWidget(QLabel("Width"))
-        self.primary_layout.addWidget(self.export_width_input)
         self.primary_layout.addSpacing(8)
         self.primary_layout.addWidget(QLabel("Format"))
         self.primary_layout.addWidget(self.export_format_combo)
         self.primary_layout.addStretch(1)
 
-        self.secondary_layout.addWidget(self.gif_preview_play_button)
-        self.secondary_layout.addWidget(self.gif_preview_pause_button)
+        self.secondary_layout.addWidget(QLabel("Size"))
+        self.secondary_layout.addWidget(self.export_width_input)
+        self.secondary_layout.addWidget(QLabel("×"))
+        self.secondary_layout.addWidget(self.export_height_input)
+        self.secondary_layout.addWidget(self.aspect_ratio_lock)
+        self.secondary_layout.addWidget(self.original_size_button)
+        self.secondary_layout.addSpacing(8)
+        self.secondary_layout.addWidget(QLabel("Quality"))
+        self.secondary_layout.addWidget(self.quality_preset_combo)
         self.secondary_layout.addStretch(1)
         self.secondary_layout.addWidget(self.generate_preview_button)
         self.secondary_layout.addWidget(self.apply_crop_button)
@@ -145,9 +157,14 @@ class ExportControlsPanel(QWidget):
 
     def bind_window(self, window) -> None:
         """Wire this panel to the main-window controller."""
-        self.export_start_input.editingFinished.connect(window.on_export_start_adjusted)
-        self.export_end_input.editingFinished.connect(window.on_export_end_adjusted)
         self.output_speed_slider.valueChanged.connect(window.on_output_speed_changed)
+        self.export_width_input.valueChanged.connect(window.on_width_changed)
+        self.export_height_input.valueChanged.connect(window.on_height_changed)
+        self.aspect_ratio_lock.toggled.connect(window.on_render_setting_changed)
+        self.original_size_button.clicked.connect(window.use_original_size)
+        self.output_fps_combo.currentIndexChanged.connect(window.on_render_setting_changed)
+        self.export_format_combo.currentIndexChanged.connect(window.on_render_setting_changed)
+        self.quality_preset_combo.currentIndexChanged.connect(window.on_render_setting_changed)
         self.generate_preview_button.clicked.connect(window.generate_gif_preview)
         self.apply_crop_button.clicked.connect(window.apply_crop_to_preview)
         self.reset_crop_button.clicked.connect(window.reset_preview_crop)

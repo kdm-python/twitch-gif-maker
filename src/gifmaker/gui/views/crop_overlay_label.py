@@ -21,6 +21,10 @@ class CropOverlayLabel(QLabel):
         super().__init__(*args, **kwargs)
         self._video_w: int = 0
         self._video_h: int = 0
+        # The source-pixel region represented by the current preview image.
+        # After a crop is previewed, the image no longer depicts the complete
+        # source, so subsequent crop gestures must be relative to that crop.
+        self._coordinate_space: tuple[int, int, int, int] | None = None
         self._crop_label_rect: QRect | None = None
         # "idle" | "drawing" | "moving" | "resizing"
         self._crop_mode: str = "idle"
@@ -36,7 +40,30 @@ class CropOverlayLabel(QLabel):
         if w != self._video_w or h != self._video_h:
             self._video_w = w
             self._video_h = h
+            self._coordinate_space = (0, 0, w, h)
             self.clear_crop()
+
+    def set_coordinate_space(self, crop: tuple[int, int, int, int] | None) -> None:
+        """Set which source region the displayed preview represents.
+
+        This resets only the visible selection, not the application's committed
+        crop.  That distinction lets a rendered crop remain active while a
+        later gesture is mapped correctly into its source coordinates.
+        """
+        if crop is None:
+            crop = (0, 0, self._video_w, self._video_h)
+        self._coordinate_space = crop
+        self._clear_crop_overlay()
+
+    def _clear_crop_overlay(self) -> None:
+        """Clear the drawn selection without emitting a model-changing signal."""
+        self._crop_label_rect = None
+        self._crop_mode = "idle"
+        self._drag_origin = None
+        self._drag_offset = None
+        self._resize_corner = None
+        self._resize_anchor = None
+        self.update()
 
     def clear_crop(self) -> None:
         """Remove the current crop selection and reset interaction state."""
@@ -134,10 +161,16 @@ class CropOverlayLabel(QLabel):
             return (0, 0, 0, 0)
         if self._video_w <= 0 or self._video_h <= 0:
             return (0, 0, 0, 0)
-        sx = self._video_w / rendered.width()
-        sy = self._video_h / rendered.height()
-        vx = max(0, round((rect.x() - rendered.x()) * sx))
-        vy = max(0, round((rect.y() - rendered.y()) * sy))
+        base_x, base_y, base_w, base_h = self._coordinate_space or (
+            0,
+            0,
+            self._video_w,
+            self._video_h,
+        )
+        sx = base_w / rendered.width()
+        sy = base_h / rendered.height()
+        vx = max(0, base_x + round((rect.x() - rendered.x()) * sx))
+        vy = max(0, base_y + round((rect.y() - rendered.y()) * sy))
         vw = max(1, round(rect.width() * sx))
         vh = max(1, round(rect.height() * sy))
         vx = min(vx, max(0, self._video_w - 1))

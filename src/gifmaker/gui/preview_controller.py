@@ -121,6 +121,7 @@ class PreviewController:
         self.window._preview_temp_file = None
         self.window._last_preview_settings = None
         self.window._last_preview_source = None
+        self.window._last_preview_spec = None
 
         if remove_temp_file and preview_file is not None:
             self.remove_temp_file_if_exists(preview_file)

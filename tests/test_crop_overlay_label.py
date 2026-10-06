@@ -55,6 +55,19 @@ def test_label_to_video_coords_center_maps_correctly() -> None:
     assert vh == 200
 
 
+def test_label_to_video_coords_respects_rendered_crop_coordinate_space() -> None:
+    """A second crop is relative to the source region shown in the preview."""
+    label = _make_label(200, 200)
+    _set_pixmap(label, 100, 100)
+    label.set_video_size(400, 400)
+    label.set_coordinate_space((100, 100, 200, 200))
+
+    crop = QRect(75, 75, 50, 50)
+    vx, vy, vw, vh = label._label_rect_to_video_rect(crop)
+
+    assert (vx, vy, vw, vh) == (150, 150, 100, 100)
+
+
 def test_crop_can_be_rectangular_on_draw() -> None:
     label = _make_label(200, 200)
     _set_pixmap(label, 160, 120)

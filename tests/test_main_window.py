@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -9,7 +10,7 @@ from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
 from gifmaker.gui.shortcut_manager import ShortcutManager
-from gifmaker.models.render_settings import RenderSettings, format_ms, parse_time_input
+from gifmaker.models.render_settings import RenderSettings, RenderSpec, format_ms, parse_time_input
 
 
 def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
@@ -63,13 +64,10 @@ def test_export_controls_panel_compacts_action_buttons_below_inputs() -> None:
     assert panel.primary_row is not None
     assert panel.button_row is not None
 
-    window.show()
-    window.resize(700, 120)
-    app.processEvents()
+    panel._apply_layout_mode(700)
     assert panel._compact_mode is True
 
-    window.resize(1100, 120)
-    app.processEvents()
+    panel._apply_layout_mode(1100)
     assert panel._compact_mode is False
 
     app.quit()
@@ -147,8 +145,8 @@ def test_shortcut_manager_registers_expected_key_bindings() -> None:
     assert manager.shortcuts["end_set"].key() == QKeySequence(Qt.Key.Key_V)
     assert manager.shortcuts["end_left"].key() == QKeySequence(Qt.Key.Key_B)
     assert manager.shortcuts["end_right"].key() == QKeySequence(Qt.Key.Key_N)
-    assert manager.shortcuts["open_file"].key() == QKeySequence("Ctrl+O")
-    assert manager.shortcuts["export_file"].key() == QKeySequence("Ctrl+E")
+    assert manager.shortcuts["open_file"].key() == QKeySequence("Shift+O")
+    assert manager.shortcuts["export_file"].key() == QKeySequence("Shift+E")
     assert manager.shortcuts["apply_crop"].key() == QKeySequence(Qt.Key.Key_A)
     assert manager.shortcuts["reset_crop"].key() == QKeySequence(Qt.Key.Key_R)
 
@@ -195,7 +193,42 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.output_speed_slider.maximum() == 300
     assert window.output_speed_slider.value() == 100
     assert window.output_fps_combo.currentData() == 24
+    assert window.aspect_ratio_lock.isChecked()
+    assert window.quality_preset_combo.currentData() == "balanced"
 
+    app.quit()
+
+
+def test_export_controls_keep_preview_playback_on_the_primary_row() -> None:
+    """The duplicate time inputs are replaced by the GIF preview controls."""
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    panel = window.export_controls_panel
+
+    assert not hasattr(panel, "export_start_input")
+    assert not hasattr(panel, "export_end_input")
+    assert panel.primary_layout.indexOf(panel.gif_preview_play_button) >= 0
+    assert panel.primary_layout.indexOf(panel.gif_preview_pause_button) >= 0
+    assert panel.secondary_layout.indexOf(panel.gif_preview_play_button) == -1
+    assert panel.secondary_layout.indexOf(panel.gif_preview_pause_button) == -1
+
+    app.quit()
+
+
+def test_output_dimensions_remain_linked_to_the_source_aspect_ratio() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window._current_video_info = type("Video", (), {"width": 1920, "height": 1080})()
+
+    window.export_width_input.setValue(800)
+    assert window.export_height_input.value() == 450
+
+    window.export_height_input.setValue(900)
+    assert window.export_width_input.value() == 1600
+
+    window.use_original_size()
+    assert window.export_width_input.value() == 1920
+    assert window.export_height_input.value() == 1080
     app.quit()
 
 
@@ -219,6 +252,44 @@ def test_output_settings_resolve_and_retime_the_generated_preview() -> None:
     )
     assert window.preview_controller._frame_delay(0) == 80
 
+    app.quit()
+
+
+def test_generate_preview_keeps_the_active_crop(tmp_path: Path) -> None:
+    """Refreshing a preview must never be a hidden reset-crop action."""
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    source = tmp_path / "input.mp4"
+    source.write_bytes(b"video")
+    window.current_video_path = str(source)
+    window.clip_start_time = 0.0
+    window.clip_end_time = 1.0
+    window._current_crop = (10, 20, 100, 80)
+
+    with patch("gifmaker.controllers.render_controller.export_gif") as export_mock, patch.object(
+        window.preview_controller, "set_movie"
+    ):
+        window.render_controller.generate_gif_preview()
+
+    assert window._current_crop == (10, 20, 100, 80)
+    assert export_mock.call_args.kwargs["crop"] == (10, 20, 100, 80)
+    window.render_controller.clear_preview_state(remove_temp_file=True)
+    app.quit()
+
+
+def test_preview_cache_never_matches_a_different_export_format(tmp_path: Path) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    source = str(tmp_path / "input.mp4")
+    preview = tmp_path / "preview.gif"
+    preview.write_bytes(b"preview")
+    settings = RenderSettings(start_seconds=0.0, end_seconds=1.0)
+    window._preview_temp_file = preview
+    window._last_preview_spec = RenderSpec(source, "GIF", settings)
+
+    assert not window.render_controller._preview_matches(
+        RenderSpec(source, "WebP", settings)
+    )
     app.quit()
 
 

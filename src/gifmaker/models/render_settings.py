@@ -13,7 +13,9 @@ class RenderSettings:
     end_seconds: float
     fps: int = 24
     width: int = 640
+    height: int = 360
     playback_speed: float = 1.0
+    quality_preset: str = "balanced"
     crop: tuple[int, int, int, int] | None = None
 
     @property
@@ -25,6 +27,19 @@ class RenderSettings:
         if self.playback_speed <= 0:
             raise ValueError("Playback speed must be greater than 0")
         return self.fps
+
+
+@dataclass(frozen=True)
+class RenderSpec:
+    """The complete, immutable recipe for one render or preview artifact.
+
+    Keeping source, format, and render settings together prevents preview and
+    export code from comparing only a subset of the user's current choices.
+    """
+
+    source_path: str
+    output_format: str
+    settings: RenderSettings
 
 
 def parse_time_input(value: str) -> float:
