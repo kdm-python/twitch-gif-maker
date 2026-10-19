@@ -224,6 +224,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release temporary preview assets when the application closes."""
+        self.render_controller.cancel_active_renders()
         self.render_controller.clear_preview_state(remove_temp_file=True)
         super().closeEvent(event)
 

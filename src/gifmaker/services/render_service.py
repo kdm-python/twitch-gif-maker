@@ -9,7 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from gifmaker.models.render_settings import RenderSpec
-from gifmaker.services.gif_export import GifExportError, export_gif, export_webp
+from gifmaker.services.gif_export import (
+    GifExportError,
+    build_gif_command,
+    build_webp_command,
+    export_gif,
+    export_webp,
+)
 
 
 class RenderService:
@@ -29,6 +35,28 @@ class RenderService:
                 f"Unsupported output format: {spec.output_format}"
             ) from exc
         exporter(
+            spec.source_path,
+            destination,
+            start_seconds=spec.settings.start_seconds,
+            end_seconds=spec.settings.end_seconds,
+            fps=spec.settings.fps,
+            width=spec.settings.width,
+            height=spec.settings.height,
+            playback_speed=spec.settings.playback_speed,
+            quality_preset=spec.settings.quality_preset,
+            crop=spec.settings.crop,
+        )
+
+    def build_command(self, spec: RenderSpec, destination: str | Path) -> list[str]:
+        """Return a validated command for a non-blocking Qt render process."""
+        builders = {"GIF": build_gif_command, "WebP": build_webp_command}
+        try:
+            builder = builders[spec.output_format]
+        except KeyError as exc:
+            raise GifExportError(
+                f"Unsupported output format: {spec.output_format}"
+            ) from exc
+        return builder(
             spec.source_path,
             destination,
             start_seconds=spec.settings.start_seconds,

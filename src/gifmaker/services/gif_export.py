@@ -43,6 +43,93 @@ class GifExportError(Exception):
     """Raised when GIF export validation or FFmpeg execution fails."""
 
 
+def build_gif_command(
+    input_path: str | Path,
+    output_path: str | Path,
+    *,
+    start_seconds: float,
+    end_seconds: float,
+    fps: int,
+    width: int,
+    height: int | None = None,
+    playback_speed: float = 1.0,
+    quality_preset: str = "balanced",
+    crop: tuple[int, int, int, int] | None = None,
+) -> list[str]:
+    """Build and validate the FFmpeg command used for a GIF render."""
+    source = Path(input_path)
+    destination = Path(output_path)
+    if not source.exists() or not source.is_file():
+        raise GifExportError(f"Input video does not exist: {source}")
+    if destination.suffix.lower() != ".gif":
+        raise GifExportError("Output file must use a .gif extension")
+    if destination.parent and not destination.parent.exists():
+        raise GifExportError(f"Output directory does not exist: {destination.parent}")
+    if start_seconds < 0 or end_seconds <= start_seconds:
+        raise GifExportError("End time must be greater than start time")
+    if fps <= 0 or width <= 0 or (height is not None and height <= 0):
+        raise GifExportError("Render dimensions and FPS must be greater than 0")
+    if playback_speed <= 0:
+        raise GifExportError("Playback speed must be greater than 0")
+    if quality_preset not in QUALITY_PRESETS:
+        raise GifExportError(f"Unknown quality preset: {quality_preset}")
+    if crop is not None and (crop[0] < 0 or crop[1] < 0 or crop[2] <= 0 or crop[3] <= 0):
+        raise GifExportError("Crop dimensions must be positive with non-negative origin")
+
+    target_height = height if height is not None else -1
+    filters = _build_gif_filter_complex(
+        fps, width, target_height, crop, playback_speed, quality_preset
+    )
+    return [
+        _ffmpeg_exe(), "-y", "-ss", str(start_seconds), "-to", str(end_seconds),
+        "-i", str(source), "-filter_complex", filters, "-loop", "0", str(destination),
+    ]
+
+
+def build_webp_command(
+    input_path: str | Path,
+    output_path: str | Path,
+    *,
+    start_seconds: float,
+    end_seconds: float,
+    fps: int,
+    width: int,
+    height: int | None = None,
+    playback_speed: float = 1.0,
+    quality_preset: str = "balanced",
+    crop: tuple[int, int, int, int] | None = None,
+) -> list[str]:
+    """Build and validate the FFmpeg command used for an animated WebP render."""
+    source = Path(input_path)
+    destination = Path(output_path)
+    if not source.exists() or not source.is_file():
+        raise GifExportError(f"Input video does not exist: {source}")
+    if destination.suffix.lower() != ".webp":
+        raise GifExportError("Output file must use a .webp extension")
+    if destination.parent and not destination.parent.exists():
+        raise GifExportError(f"Output directory does not exist: {destination.parent}")
+    if start_seconds < 0 or end_seconds <= start_seconds:
+        raise GifExportError("End time must be greater than start time")
+    if fps <= 0 or width <= 0 or (height is not None and height <= 0):
+        raise GifExportError("Render dimensions and FPS must be greater than 0")
+    if playback_speed <= 0:
+        raise GifExportError("Playback speed must be greater than 0")
+    if quality_preset not in QUALITY_PRESETS:
+        raise GifExportError(f"Unknown quality preset: {quality_preset}")
+    if crop is not None and (crop[0] < 0 or crop[1] < 0 or crop[2] <= 0 or crop[3] <= 0):
+        raise GifExportError("Crop dimensions must be positive with non-negative origin")
+
+    target_height = height if height is not None else -1
+    vf = _build_vf_filters(fps, width, target_height, crop, playback_speed)
+    preset = QUALITY_PRESETS[quality_preset]
+    return [
+        _ffmpeg_exe(), "-y", "-ss", str(start_seconds), "-to", str(end_seconds),
+        "-i", str(source), "-vf", vf, "-c:v", "libwebp_anim", "-quality",
+        str(preset["webp_quality"]), "-preset", str(preset["webp_preset"]),
+        "-loop", "0", "-an", str(destination),
+    ]
+
+
 def export_gif(
     input_path: str | Path,
     output_path: str | Path,

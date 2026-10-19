@@ -4,12 +4,13 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QProcess, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
 from gifmaker.gui.shortcut_manager import ShortcutManager
+from gifmaker.controllers.render_controller import _RenderProcessJob
 from gifmaker.models.render_settings import RenderSettings, RenderSpec, format_ms, parse_time_input
 
 
@@ -266,14 +267,13 @@ def test_generate_preview_keeps_the_active_crop(tmp_path: Path) -> None:
     window.clip_end_time = 1.0
     window._current_crop = (10, 20, 100, 80)
 
-    with patch("gifmaker.controllers.render_controller.export_gif") as export_mock, patch.object(
-        window.preview_controller, "set_movie"
+    with patch.object(window.render_controller.render_service, "build_command") as build_mock, patch.object(
+        window.render_controller, "_start_process"
     ):
         window.render_controller.generate_gif_preview()
 
     assert window._current_crop == (10, 20, 100, 80)
-    assert export_mock.call_args.kwargs["crop"] == (10, 20, 100, 80)
-    window.render_controller.clear_preview_state(remove_temp_file=True)
+    assert build_mock.call_args.args[0].settings.crop == (10, 20, 100, 80)
     app.quit()
 
 
@@ -290,6 +290,44 @@ def test_preview_cache_never_matches_a_different_export_format(tmp_path: Path) -
     assert not window.render_controller._preview_matches(
         RenderSpec(source, "WebP", settings)
     )
+    app.quit()
+
+
+def test_stale_preview_process_result_is_discarded(tmp_path: Path) -> None:
+    """An older FFmpeg job must never replace a newer settings revision."""
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    preview = tmp_path / "stale.gif"
+    preview.write_bytes(b"stale")
+    source = str(tmp_path / "input.mp4")
+    spec = RenderSpec(source, "GIF", RenderSettings(start_seconds=0.0, end_seconds=1.0))
+    job = _RenderProcessJob(QProcess(window), spec, preview, revision=1)
+    window._render_revision = 2
+    window.render_controller._preview_job = job
+
+    window.render_controller._on_preview_finished(job, 0, None)
+
+    assert window.render_controller._preview_job is None
+    assert not preview.exists()
+    assert window._last_preview_spec is None
+    app.quit()
+
+
+def test_render_change_debounces_a_refresh_when_a_preview_exists(tmp_path: Path) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    source = str(tmp_path / "input.mp4")
+    window.current_video_path = source
+    window.clip_start_time = 0.0
+    window.clip_end_time = 1.0
+    window._last_preview_spec = RenderSpec(
+        source, "GIF", RenderSettings(start_seconds=0.0, end_seconds=1.0)
+    )
+
+    with patch.object(window.render_controller, "_schedule_preview_refresh") as schedule:
+        window.render_controller.on_render_setting_changed()
+
+    schedule.assert_called_once_with()
     app.quit()
 
 

@@ -5,15 +5,27 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
+from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import QFileDialog
 
 from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.render_estimate import calculate_render_estimate, format_file_size
-from gifmaker.services.gif_export import GifExportError, export_gif
+from gifmaker.services.gif_export import GifExportError
 from gifmaker.services.render_service import RenderService
+
+
+@dataclass
+class _RenderProcessJob:
+    """A single in-flight FFmpeg process and the immutable recipe it serves."""
+
+    process: QProcess
+    spec: RenderSpec
+    destination: Path
+    revision: int | None = None
 
 
 class RenderController:
@@ -22,6 +34,11 @@ class RenderController:
     def __init__(self, window) -> None:
         self.window = window
         self.render_service = RenderService()
+        self._preview_job: _RenderProcessJob | None = None
+        self._export_job: _RenderProcessJob | None = None
+        self._preview_debounce = QTimer(window)
+        self._preview_debounce.setSingleShot(True)
+        self._preview_debounce.timeout.connect(self._generate_debounced_preview)
 
     def _resolve_render_settings(self) -> RenderSettings:
         """Resolve the current timeline and controls into immutable settings."""
@@ -63,9 +80,16 @@ class RenderController:
 
     def on_render_setting_changed(self, _value=None) -> None:
         """Record a changed render input and mark an older preview as stale."""
+        should_refresh_preview = bool(
+            self.window._last_preview_spec is not None or self._preview_job is not None
+        )
         self.window._render_revision += 1
+        self._cancel_stale_preview_job()
         self.update_output_summary()
-        self._show_preview_stale_state()
+        if should_refresh_preview:
+            self._schedule_preview_refresh()
+        else:
+            self._show_preview_stale_state()
 
     def on_width_changed(self, width: int) -> None:
         """Keep output height proportional when aspect locking is enabled."""
@@ -98,6 +122,17 @@ class RenderController:
             window.export_status_label.setText(
                 "Status: Preview out of date. Export will render current settings."
             )
+
+    def _schedule_preview_refresh(self) -> None:
+        """Coalesce rapid control changes into one current-revision preview job."""
+        if self.window.current_video_path is None:
+            return
+        self.window.export_status_label.setText("Status: Updating preview...")
+        self._preview_debounce.start(200)
+
+    def _generate_debounced_preview(self) -> None:
+        """Render only after a brief pause in setting changes."""
+        self.generate_gif_preview()
 
     def use_original_size(self) -> None:
         """Set output dimensions to the current crop or source-video dimensions."""
@@ -215,24 +250,28 @@ class RenderController:
         window.export_status_label.setText("Status: Export complete.")
 
     def _export_source(self, destination: Path, spec: RenderSpec) -> None:
-        """Invoke the matching exporter and report its terminal state."""
+        """Start a non-blocking export for the captured settings snapshot."""
         window = self.window
-        window.export_status_label.setText("Status: Exporting...")
+        if self._export_job is not None:
+            window.export_status_label.setText("Status: Export already in progress.")
+            return
         try:
-            self.render_service.export(
-                spec,
-                destination,
-            )
+            command = self.render_service.build_command(spec, destination)
         except GifExportError as exc:
-            logger.error("{} export failed: {}", spec.output_format, exc)
             window.export_status_label.setText(f"Status: Export failed: {exc}")
             return
-        window.export_status_label.setText("Status: Export complete.")
-        logger.info("{} export completed: {}", spec.output_format, destination)
+        window.export_status_label.setText("Status: Exporting...")
+        self._export_job = self._start_process(
+            command,
+            spec,
+            destination,
+            on_finished=self._on_export_finished,
+        )
 
     def generate_gif_preview(self) -> None:
         """Render a temporary GIF preview for the current selection and crop."""
         window = self.window
+        self._preview_debounce.stop()
         if window.current_video_path is None:
             window.export_status_label.setText("Status: Load a video first.")
             return
@@ -247,35 +286,124 @@ class RenderController:
         descriptor, temporary_name = tempfile.mkstemp(prefix="gifmaker-preview-", suffix=".gif")
         os.close(descriptor)
         temporary_file = Path(temporary_name)
-        previous_file = window._preview_temp_file
+        self._cancel_preview_job()
         window.export_status_label.setText("Status: Generating preview...")
         try:
-            export_gif(
-                window.current_video_path,
-                temporary_file,
-                start_seconds=spec.settings.start_seconds,
-                end_seconds=spec.settings.end_seconds,
-                fps=spec.settings.fps,
-                width=spec.settings.width,
-                height=spec.settings.height,
-                playback_speed=spec.settings.playback_speed,
-                quality_preset=spec.settings.quality_preset,
-                crop=spec.settings.crop,
-            )
-            window.preview_controller.set_movie(temporary_file)
-        except (GifExportError, RuntimeError) as exc:
+            command = self.render_service.build_command(spec, temporary_file)
+        except GifExportError as exc:
             self.remove_temp_file_if_exists(temporary_file)
             logger.error("Preview generation failed: {}", exc)
             window.export_status_label.setText(f"Status: Preview failed: {exc}")
             return
-        window._preview_temp_file = temporary_file
-        window._last_preview_settings = spec.settings
-        window._last_preview_source = spec.source_path
-        window._last_preview_spec = spec
-        window.gif_preview_label.set_coordinate_space(spec.settings.crop)
-        if previous_file and previous_file != temporary_file:
+        self._preview_job = self._start_process(
+            command,
+            spec,
+            temporary_file,
+            revision=window._render_revision,
+            on_finished=self._on_preview_finished,
+        )
+
+    def _start_process(
+        self,
+        command: list[str],
+        spec: RenderSpec,
+        destination: Path,
+        *,
+        on_finished,
+        revision: int | None = None,
+    ) -> _RenderProcessJob:
+        """Launch FFmpeg without blocking Qt's event loop."""
+        process = QProcess(self.window)
+        job = _RenderProcessJob(process, spec, destination, revision)
+        process.finished.connect(
+            lambda exit_code, exit_status, active_job=job: on_finished(
+                active_job, exit_code, exit_status
+            )
+        )
+        process.errorOccurred.connect(
+            lambda _error, active_job=job: self._on_process_error(active_job)
+        )
+        process.setProgram(command[0])
+        process.setArguments(command[1:])
+        logger.info("Starting FFmpeg {} render: {}", spec.output_format, " ".join(command))
+        process.start()
+        return job
+
+    def _on_process_error(self, job: _RenderProcessJob) -> None:
+        """Surface failures to launch FFmpeg and clean up a failed preview."""
+        if job is self._preview_job:
+            self._preview_job = None
+            self.remove_temp_file_if_exists(job.destination)
+            self.window.export_status_label.setText(
+                f"Status: Preview failed: {job.process.errorString()}"
+            )
+        elif job is self._export_job:
+            self._export_job = None
+            self.window.export_status_label.setText(
+                f"Status: Export failed: {job.process.errorString()}"
+            )
+
+    def _on_preview_finished(self, job: _RenderProcessJob, exit_code: int, _status) -> None:
+        """Adopt only the latest successful preview job."""
+        is_current_job = job is self._preview_job
+        if is_current_job:
+            self._preview_job = None
+        is_current_revision = job.revision == self.window._render_revision
+        if not is_current_job or not is_current_revision or exit_code != 0:
+            self.remove_temp_file_if_exists(job.destination)
+            if is_current_job and exit_code != 0:
+                message = bytes(job.process.readAllStandardError()).decode(errors="replace").strip()
+                self.window.export_status_label.setText(
+                    f"Status: Preview failed: {message or 'ffmpeg exited unsuccessfully'}"
+                )
+            return
+        try:
+            self.window.preview_controller.set_movie(job.destination)
+        except RuntimeError as exc:
+            self.remove_temp_file_if_exists(job.destination)
+            self.window.export_status_label.setText(f"Status: Preview failed: {exc}")
+            return
+
+        window = self.window
+        previous_file = window._preview_temp_file
+        window._preview_temp_file = job.destination
+        window._last_preview_settings = job.spec.settings
+        window._last_preview_source = job.spec.source_path
+        window._last_preview_spec = job.spec
+        window.gif_preview_label.set_coordinate_space(job.spec.settings.crop)
+        if previous_file and previous_file != job.destination:
             self.remove_temp_file_if_exists(previous_file)
         window.export_status_label.setText("Status: Preview ready. Click Export to save.")
+
+    def _on_export_finished(self, job: _RenderProcessJob, exit_code: int, _status) -> None:
+        """Complete an export without coupling it to later UI changes."""
+        if job is not self._export_job:
+            return
+        self._export_job = None
+        if exit_code == 0:
+            self.window.export_status_label.setText("Status: Export complete.")
+            logger.info("{} export completed: {}", job.spec.output_format, job.destination)
+            return
+        message = bytes(job.process.readAllStandardError()).decode(errors="replace").strip()
+        self.window.export_status_label.setText(
+            f"Status: Export failed: {message or 'ffmpeg exited unsuccessfully'}"
+        )
+
+    def _cancel_stale_preview_job(self) -> None:
+        """Stop an in-flight preview as soon as its input revision changes."""
+        if self._preview_job is not None:
+            self._cancel_preview_job()
+
+    def _cancel_preview_job(self) -> None:
+        """Cancel an in-flight preview; its finish callback performs cleanup."""
+        job = self._preview_job
+        if job is None:
+            return
+        self._preview_job = None
+        if job.process.state() != QProcess.ProcessState.NotRunning:
+            job.process.kill()
+        else:
+            self.remove_temp_file_if_exists(job.destination)
 
     def apply_crop_to_preview(self) -> None:
         """Render a preview using the crop that is currently drawn."""
@@ -313,7 +441,19 @@ class RenderController:
 
     def clear_preview_state(self, *, remove_temp_file: bool) -> None:
         """Dispose of preview playback and optionally delete its temporary file."""
+        self._preview_debounce.stop()
+        self._cancel_preview_job()
         self.window.preview_controller.clear(remove_temp_file=remove_temp_file)
+
+    def cancel_active_renders(self) -> None:
+        """Stop running FFmpeg processes during application shutdown."""
+        self._preview_debounce.stop()
+        self._cancel_preview_job()
+        if self._export_job is not None:
+            job = self._export_job
+            self._export_job = None
+            if job.process.state() != QProcess.ProcessState.NotRunning:
+                job.process.kill()
 
     def remove_temp_file_if_exists(self, file_path: Path) -> None:
         """Delegate temporary-file cleanup to the preview lifecycle helper."""
