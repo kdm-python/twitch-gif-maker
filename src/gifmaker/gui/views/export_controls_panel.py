@@ -77,6 +77,14 @@ class ExportControlsPanel(QWidget):
         self.quality_preset_combo.addItem("High quality", "high")
         self.quality_preset_combo.setCurrentIndex(1)
         self.quality_preset_combo.setFixedWidth(112)
+        self.quality_label = QLabel("WebP quality")
+
+        self.sharpness_combo = QComboBox()
+        self.sharpness_combo.addItem("Off", "off")
+        self.sharpness_combo.addItem("Mild", "mild")
+        self.sharpness_combo.addItem("Strong", "strong")
+        self.sharpness_combo.setCurrentIndex(self.sharpness_combo.findData("mild"))
+        self.sharpness_combo.setFixedWidth(86)
 
         self.generate_preview_button = QPushButton("Generate Preview")
         self.apply_crop_button = QPushButton("Apply Crop")
@@ -116,8 +124,10 @@ class ExportControlsPanel(QWidget):
         self.secondary_layout.addWidget(self.aspect_ratio_lock)
         self.secondary_layout.addWidget(self.original_size_button)
         self.secondary_layout.addSpacing(8)
-        self.secondary_layout.addWidget(QLabel("Quality"))
+        self.secondary_layout.addWidget(self.quality_label)
         self.secondary_layout.addWidget(self.quality_preset_combo)
+        self.secondary_layout.addWidget(QLabel("Sharpness"))
+        self.secondary_layout.addWidget(self.sharpness_combo)
         self.secondary_layout.addStretch(1)
         self.secondary_layout.addWidget(self.generate_preview_button)
         self.secondary_layout.addWidget(self.apply_crop_button)
@@ -127,6 +137,7 @@ class ExportControlsPanel(QWidget):
         self.root_layout.addWidget(self.button_row)
         self._compact_mode = False
         self._apply_layout_mode()
+        self.set_output_format(self.export_format_combo.currentText())
 
     def resize(self, *args, **kwargs):
         result = super().resize(*args, **kwargs)
@@ -163,10 +174,17 @@ class ExportControlsPanel(QWidget):
         self.aspect_ratio_lock.toggled.connect(window.on_render_setting_changed)
         self.original_size_button.clicked.connect(window.use_original_size)
         self.output_fps_combo.currentIndexChanged.connect(window.on_render_setting_changed)
-        self.export_format_combo.currentIndexChanged.connect(window.on_render_setting_changed)
+        self.export_format_combo.currentIndexChanged.connect(window.on_output_format_changed)
         self.quality_preset_combo.currentIndexChanged.connect(window.on_render_setting_changed)
+        self.sharpness_combo.currentIndexChanged.connect(window.on_render_setting_changed)
         self.generate_preview_button.clicked.connect(window.generate_gif_preview)
         self.apply_crop_button.clicked.connect(window.apply_crop_to_preview)
         self.reset_crop_button.clicked.connect(window.reset_preview_crop)
         self.gif_preview_play_button.clicked.connect(window.play_gif_preview)
         self.gif_preview_pause_button.clicked.connect(window.pause_gif_preview)
+
+    def set_output_format(self, output_format: str) -> None:
+        """Expose lossy quality only where it changes the selected format."""
+        uses_lossy_quality = output_format == "WebP"
+        self.quality_label.setVisible(uses_lossy_quality)
+        self.quality_preset_combo.setVisible(uses_lossy_quality)

@@ -24,6 +24,7 @@ def calculate_render_estimate(
     height: int,
     output_format: str,
     quality_preset: str,
+    sharpness_preset: str = "mild",
 ) -> RenderEstimate:
     """Estimate duration, frames, and compressed file size for an animation.
 
@@ -42,7 +43,14 @@ def calculate_render_estimate(
     }
     compression = quality_factors.get(output_format, quality_factors["GIF"])
     bytes_per_pixel_frame = compression.get(quality_preset, compression["balanced"])
-    estimated_bytes = round(width * height * frame_count * bytes_per_pixel_frame)
+    sharpness_factors = {"off": 1.0, "mild": 1.03, "strong": 1.07}
+    estimated_bytes = round(
+        width
+        * height
+        * frame_count
+        * bytes_per_pixel_frame
+        * sharpness_factors.get(sharpness_preset, 1.03)
+    )
     return RenderEstimate(frame_count, duration, estimated_bytes)
 
 

@@ -16,6 +16,7 @@ class RenderSettings:
     height: int = 360
     playback_speed: float = 1.0
     quality_preset: str = "balanced"
+    sharpness_preset: str = "mild"
     crop: tuple[int, int, int, int] | None = None
 
     @property

@@ -33,6 +33,14 @@ QUALITY_PRESETS: dict[str, dict[str, str | int]] = {
     },
 }
 
+SHARPNESS_PRESETS: dict[str, str] = {
+    "off": "",
+    # Apply a restrained luma-only sharpening pass after scaling.  This avoids
+    # adding coloured halos, which GIF's limited palette would amplify.
+    "mild": "unsharp=5:5:0.45",
+    "strong": "unsharp=5:5:0.8",
+}
+
 
 def _ffmpeg_exe() -> str:
     # GIFMAKER_FFMPEG lets a dev point at a capable build (e.g. ffmpeg-full)
@@ -54,6 +62,7 @@ def build_gif_command(
     height: int | None = None,
     playback_speed: float = 1.0,
     quality_preset: str = "balanced",
+    sharpness_preset: str = "off",
     crop: tuple[int, int, int, int] | None = None,
 ) -> list[str]:
     """Build and validate the FFmpeg command used for a GIF render."""
@@ -73,12 +82,14 @@ def build_gif_command(
         raise GifExportError("Playback speed must be greater than 0")
     if quality_preset not in QUALITY_PRESETS:
         raise GifExportError(f"Unknown quality preset: {quality_preset}")
+    if sharpness_preset not in SHARPNESS_PRESETS:
+        raise GifExportError(f"Unknown sharpness preset: {sharpness_preset}")
     if crop is not None and (crop[0] < 0 or crop[1] < 0 or crop[2] <= 0 or crop[3] <= 0):
         raise GifExportError("Crop dimensions must be positive with non-negative origin")
 
     target_height = height if height is not None else -1
     filters = _build_gif_filter_complex(
-        fps, width, target_height, crop, playback_speed, quality_preset
+        fps, width, target_height, crop, playback_speed, quality_preset, sharpness_preset
     )
     return [
         _ffmpeg_exe(), "-y", "-ss", str(start_seconds), "-to", str(end_seconds),
@@ -97,6 +108,7 @@ def build_webp_command(
     height: int | None = None,
     playback_speed: float = 1.0,
     quality_preset: str = "balanced",
+    sharpness_preset: str = "off",
     crop: tuple[int, int, int, int] | None = None,
 ) -> list[str]:
     """Build and validate the FFmpeg command used for an animated WebP render."""
@@ -116,11 +128,15 @@ def build_webp_command(
         raise GifExportError("Playback speed must be greater than 0")
     if quality_preset not in QUALITY_PRESETS:
         raise GifExportError(f"Unknown quality preset: {quality_preset}")
+    if sharpness_preset not in SHARPNESS_PRESETS:
+        raise GifExportError(f"Unknown sharpness preset: {sharpness_preset}")
     if crop is not None and (crop[0] < 0 or crop[1] < 0 or crop[2] <= 0 or crop[3] <= 0):
         raise GifExportError("Crop dimensions must be positive with non-negative origin")
 
     target_height = height if height is not None else -1
-    vf = _build_vf_filters(fps, width, target_height, crop, playback_speed)
+    vf = _build_vf_filters(
+        fps, width, target_height, crop, playback_speed, sharpness_preset
+    )
     preset = QUALITY_PRESETS[quality_preset]
     return [
         _ffmpeg_exe(), "-y", "-ss", str(start_seconds), "-to", str(end_seconds),
@@ -141,6 +157,7 @@ def export_gif(
     height: int | None = None,
     playback_speed: float = 1.0,
     quality_preset: str = "balanced",
+    sharpness_preset: str = "off",
     crop: tuple[int, int, int, int] | None = None,
 ) -> None:
     """Export a palette-optimised GIF from a section of video using FFmpeg."""
@@ -167,6 +184,8 @@ def export_gif(
         raise GifExportError("Height must be greater than 0")
     if quality_preset not in QUALITY_PRESETS:
         raise GifExportError(f"Unknown quality preset: {quality_preset}")
+    if sharpness_preset not in SHARPNESS_PRESETS:
+        raise GifExportError(f"Unknown sharpness preset: {sharpness_preset}")
     if crop is not None:
         cx, cy, cw, ch = crop
         if cx < 0 or cy < 0 or cw <= 0 or ch <= 0:
@@ -176,7 +195,7 @@ def export_gif(
 
     target_height = height if height is not None else -1
     filters = _build_gif_filter_complex(
-        fps, width, target_height, crop, playback_speed, quality_preset
+        fps, width, target_height, crop, playback_speed, quality_preset, sharpness_preset
     )
 
     ffmpeg_cmd = [
@@ -221,9 +240,13 @@ def _build_vf_filters(
     height: int,
     crop: tuple[int, int, int, int] | None,
     playback_speed: float = 1.0,
+    sharpness_preset: str = "off",
 ) -> str:
     timing = "" if playback_speed == 1.0 else f"setpts=PTS/{playback_speed:g},"
     vf = f"{timing}fps={fps},scale={width}:{height}:flags=lanczos"
+    sharpness_filter = SHARPNESS_PRESETS[sharpness_preset]
+    if sharpness_filter:
+        vf = f"{vf},{sharpness_filter}"
     if crop is not None:
         cx, cy, cw, ch = crop
         vf = f"crop={cw}:{ch}:{cx}:{cy},{vf}"
@@ -237,10 +260,13 @@ def _build_gif_filter_complex(
     crop: tuple[int, int, int, int] | None,
     playback_speed: float,
     quality_preset: str,
+    sharpness_preset: str,
 ) -> str:
     """Build a palette-generation graph for high-quality animated GIF output."""
     preset = QUALITY_PRESETS[quality_preset]
-    video_filters = _build_vf_filters(fps, width, height, crop, playback_speed)
+    video_filters = _build_vf_filters(
+        fps, width, height, crop, playback_speed, sharpness_preset
+    )
     return (
         f"[0:v]{video_filters},split[gif][palette_source];"
         f"[palette_source]palettegen=max_colors={preset['gif_colors']}:stats_mode=diff[palette];"
@@ -259,6 +285,7 @@ def export_webp(
     height: int | None = None,
     playback_speed: float = 1.0,
     quality_preset: str = "balanced",
+    sharpness_preset: str = "off",
     crop: tuple[int, int, int, int] | None = None,
 ) -> None:
     """Export an animated WebP from a section of a video using FFmpeg."""
@@ -285,6 +312,8 @@ def export_webp(
         raise GifExportError("Height must be greater than 0")
     if quality_preset not in QUALITY_PRESETS:
         raise GifExportError(f"Unknown quality preset: {quality_preset}")
+    if sharpness_preset not in SHARPNESS_PRESETS:
+        raise GifExportError(f"Unknown sharpness preset: {sharpness_preset}")
     if crop is not None:
         cx, cy, cw, ch = crop
         if cx < 0 or cy < 0 or cw <= 0 or ch <= 0:
@@ -293,7 +322,9 @@ def export_webp(
             )
 
     target_height = height if height is not None else -1
-    vf = _build_vf_filters(fps, width, target_height, crop, playback_speed)
+    vf = _build_vf_filters(
+        fps, width, target_height, crop, playback_speed, sharpness_preset
+    )
     preset = QUALITY_PRESETS[quality_preset]
     logger.debug("*** WebP export VF FILTERS *** {}", vf)
 

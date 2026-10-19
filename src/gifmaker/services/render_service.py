@@ -44,6 +44,7 @@ class RenderService:
             height=spec.settings.height,
             playback_speed=spec.settings.playback_speed,
             quality_preset=spec.settings.quality_preset,
+            sharpness_preset=spec.settings.sharpness_preset,
             crop=spec.settings.crop,
         )
 
@@ -66,5 +67,6 @@ class RenderService:
             height=spec.settings.height,
             playback_speed=spec.settings.playback_speed,
             quality_preset=spec.settings.quality_preset,
+            sharpness_preset=spec.settings.sharpness_preset,
             crop=spec.settings.crop,
         )

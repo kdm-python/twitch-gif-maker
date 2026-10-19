@@ -187,6 +187,30 @@ def test_export_gif_quality_preset_changes_palette_settings(tmp_path: Path) -> N
     assert "paletteuse=dither=bayer:bayer_scale=3" in filter_graph
 
 
+def test_export_gif_applies_selected_luma_sharpening(tmp_path: Path) -> None:
+    input_video = tmp_path / "input.mp4"
+    input_video.write_text("fake video")
+    output_gif = tmp_path / "output.gif"
+
+    with patch("gifmaker.services.gif_export.subprocess.run") as run_mock:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stderr = ""
+        export_gif(
+            input_video,
+            output_gif,
+            start_seconds=0.0,
+            end_seconds=2.0,
+            fps=24,
+            width=320,
+            sharpness_preset="strong",
+        )
+
+    filter_graph = run_mock.call_args.args[0][
+        run_mock.call_args.args[0].index("-filter_complex") + 1
+    ]
+    assert "scale=320:-1:flags=lanczos,unsharp=5:5:0.8" in filter_graph
+
+
 def test_export_gif_raises_for_invalid_crop(tmp_path: Path) -> None:
     input_video = tmp_path / "input.mp4"
     input_video.write_text("fake video")

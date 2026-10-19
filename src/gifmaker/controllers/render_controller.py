@@ -40,7 +40,9 @@ class RenderController:
         self._preview_debounce.setSingleShot(True)
         self._preview_debounce.timeout.connect(self._generate_debounced_preview)
 
-    def _resolve_render_settings(self) -> RenderSettings:
+    def _resolve_render_settings(
+        self, *, output_format: str | None = None
+    ) -> RenderSettings:
         """Resolve the current timeline and controls into immutable settings."""
         window = self.window
         if window.clip_start_time is None or window.clip_end_time is None:
@@ -49,6 +51,7 @@ class RenderController:
             raise ValueError("End time must be greater than start time")
         speed = window.output_speed_slider.value() / 100
         fps = window.output_fps_combo.currentData() or 24
+        selected_format = output_format or window.export_format_combo.currentText()
         return RenderSettings(
             start_seconds=window.clip_start_time,
             end_seconds=window.clip_end_time,
@@ -56,7 +59,14 @@ class RenderController:
             width=window.export_width_input.value(),
             height=window.export_height_input.value(),
             playback_speed=float(speed),
-            quality_preset=str(window.quality_preset_combo.currentData()),
+            # GIF's 256-colour palette is fixed: its former Quality choices
+            # did not produce meaningful high-quality variants.
+            quality_preset=(
+                str(window.quality_preset_combo.currentData())
+                if selected_format == "WebP"
+                else "balanced"
+            ),
+            sharpness_preset=str(window.sharpness_combo.currentData()),
             crop=window._current_crop,
         )
 
@@ -68,8 +78,15 @@ class RenderController:
         return RenderSpec(
             source_path=window.current_video_path,
             output_format=output_format or window.export_format_combo.currentText(),
-            settings=self._resolve_render_settings(),
+            settings=self._resolve_render_settings(output_format=output_format),
         )
+
+    def on_output_format_changed(self, _value=None) -> None:
+        """Apply format-specific controls before creating a new render revision."""
+        self.window.export_controls_panel.set_output_format(
+            self.window.export_format_combo.currentText()
+        )
+        self.on_render_setting_changed()
 
     def on_output_speed_changed(self, value: int) -> None:
         """Update output-speed feedback and apply it to the live GIF preview."""
@@ -194,6 +211,7 @@ class RenderController:
             height=settings.height,
             output_format=window.export_format_combo.currentText(),
             quality_preset=settings.quality_preset,
+            sharpness_preset=settings.sharpness_preset,
         )
         window.output_summary_label.setText(
             f"Output: {settings.width}×{settings.height} · {estimate.frame_count} frames · "

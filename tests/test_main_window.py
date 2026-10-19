@@ -196,7 +196,27 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.output_fps_combo.currentData() == 24
     assert window.aspect_ratio_lock.isChecked()
     assert window.quality_preset_combo.currentData() == "balanced"
+    assert window.sharpness_combo.currentData() == "mild"
+    assert window.quality_preset_combo.isHidden()
 
+    app.quit()
+
+
+def test_quality_control_is_webp_only_and_gif_uses_its_fixed_palette() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.current_video_path = "input.mp4"
+    window.clip_start_time = 0.0
+    window.clip_end_time = 1.0
+    window.quality_preset_combo.setCurrentIndex(
+        window.quality_preset_combo.findData("high")
+    )
+
+    assert window.render_controller._resolve_render_settings().quality_preset == "balanced"
+
+    window.export_format_combo.setCurrentText("WebP")
+    assert not window.quality_preset_combo.isHidden()
+    assert window.render_controller._resolve_render_settings().quality_preset == "high"
     app.quit()
 
 

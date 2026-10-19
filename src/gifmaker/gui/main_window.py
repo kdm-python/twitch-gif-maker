@@ -160,6 +160,7 @@ class MainWindow(QMainWindow):
             "output_speed_value_label", "output_fps_combo",
             "export_width_input", "export_height_input", "aspect_ratio_lock",
             "original_size_button", "quality_preset_combo", "generate_preview_button", "apply_crop_button",
+            "sharpness_combo",
             "reset_crop_button", "gif_preview_play_button", "gif_preview_pause_button",
             "export_format_combo",
         ):
