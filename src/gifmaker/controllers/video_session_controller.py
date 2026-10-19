@@ -5,6 +5,7 @@ from __future__ import annotations
 from loguru import logger
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QMediaPlayer
+from PySide6.QtWidgets import QMessageBox
 
 from gifmaker.models.render_settings import (
     duration_to_frame_count,
@@ -33,17 +34,48 @@ class VideoSessionController:
 
         dialog = QFileDialog(self.window)
         dialog.setFileMode(QFileDialog.ExistingFile)
-        dialog.setNameFilter("Video Files (*.mp4 *.avi *.mov)")
+        dialog.setNameFilter("MP4 Video Files (*.mp4)")
         if not dialog.exec() or not dialog.selectedFiles():
             logger.info("Video file selection cancelled.")
             return
 
-        selected_path = dialog.selectedFiles()[0]
+        self.open_video_path(dialog.selectedFiles()[0])
+
+    def open_dropped_video(self, file_path: str) -> None:
+        """Handle a local file dropped onto the playback surface."""
+        self.open_video_path(file_path)
+
+    def open_video_path(self, file_path: str) -> None:
+        """Validate and load a path from either the picker or drag-and-drop."""
+        from pathlib import Path
+
+        source = Path(file_path)
+        if source.suffix.lower() != ".mp4":
+            QMessageBox.warning(
+                self.window,
+                "Unsupported video",
+                f"Only MP4 videos can be opened.\n\n{source.name}",
+            )
+            return
+        if not source.exists() or not source.is_file():
+            QMessageBox.warning(
+                self.window,
+                "Video not found",
+                f"The dropped MP4 file could not be found.\n\n{source}",
+            )
+            return
+
+        selected_path = str(source)
         previous_path = self.window.current_video_path
         try:
             video_info = probe_video(selected_path)
         except VideoProbeError as exc:
             logger.error("Failed to probe selected video '{}': {}", selected_path, exc)
+            QMessageBox.warning(
+                self.window,
+                "Could not open video",
+                f"The MP4 file could not be read.\n\n{exc}",
+            )
             return
 
         self.window.current_video_path = selected_path

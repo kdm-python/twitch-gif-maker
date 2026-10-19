@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -18,6 +18,52 @@ from PySide6.QtWidgets import (
 from gifmaker.gui.views.marker_seek_slider import MarkerSeekSlider
 
 
+class VideoDropWidget(QVideoWidget):
+    """Video surface that accepts local-file drops without losing playback."""
+
+    fileDropped = Signal(str)
+    dragActiveChanged = Signal(bool)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    @staticmethod
+    def _local_file_from_event(event) -> str | None:
+        if not event.mimeData().hasUrls():
+            return None
+        for url in event.mimeData().urls():
+            if url.isLocalFile():
+                return url.toLocalFile()
+        return None
+
+    def dragEnterEvent(self, event) -> None:
+        if self._local_file_from_event(event) is None:
+            event.ignore()
+            return
+        self.dragActiveChanged.emit(True)
+        event.acceptProposedAction()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._local_file_from_event(event) is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event) -> None:
+        self.dragActiveChanged.emit(False)
+        event.accept()
+
+    def dropEvent(self, event) -> None:
+        path = self._local_file_from_event(event)
+        self.dragActiveChanged.emit(False)
+        if path is None:
+            event.ignore()
+            return
+        self.fileDropped.emit(path)
+        event.acceptProposedAction()
+
+
 class VideoPreviewPanel(QGroupBox):
     """Panel containing the video preview and its playback controls.
 
@@ -26,18 +72,23 @@ class VideoPreviewPanel(QGroupBox):
     panel lets the video canvas use the height it needs.
     """
 
+    fileDropped = Signal(str)
+
     def __init__(self, parent=None) -> None:
         super().__init__("Video Preview", parent)
+        self.setAcceptDrops(True)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(8, 8, 8, 8)
         self._layout.setSpacing(6)
 
-        self.video_widget = QVideoWidget(self)
+        self.video_widget = VideoDropWidget(self)
         self.video_widget.setMinimumHeight(140)
         self.video_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_widget.setStyleSheet("border: 1px solid palette(mid);")
         self.video_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.video_widget.fileDropped.connect(self.fileDropped)
+        self.video_widget.dragActiveChanged.connect(self._set_drop_highlight)
 
         self.media_player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
@@ -125,6 +176,7 @@ class VideoPreviewPanel(QGroupBox):
 
     def bind_window(self, window) -> None:
         """Wire this panel to the main-window controller."""
+        self.fileDropped.connect(window.open_dropped_video)
         self.media_player.mediaStatusChanged.connect(window.on_media_status_changed)
         self.media_player.errorOccurred.connect(window.on_media_error)
         self.media_player.durationChanged.connect(window.on_duration_changed)
@@ -157,3 +209,42 @@ class VideoPreviewPanel(QGroupBox):
         )
 
         self.mute_button.clicked.connect(window.toggle_mute)
+
+    @staticmethod
+    def _local_file_from_event(event) -> str | None:
+        return VideoDropWidget._local_file_from_event(event)
+
+    def _set_drop_highlight(self, active: bool) -> None:
+        """Show an obvious target while a local file is dragged over playback."""
+        if active:
+            self.video_widget.setStyleSheet(
+                "border: 2px dashed palette(highlight); background: palette(alternate-base);"
+            )
+        else:
+            self.video_widget.setStyleSheet("border: 1px solid palette(mid);")
+
+    def dragEnterEvent(self, event) -> None:
+        if self._local_file_from_event(event) is None:
+            event.ignore()
+            return
+        self._set_drop_highlight(True)
+        event.acceptProposedAction()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._local_file_from_event(event) is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event) -> None:
+        self._set_drop_highlight(False)
+        event.accept()
+
+    def dropEvent(self, event) -> None:
+        path = self._local_file_from_event(event)
+        self._set_drop_highlight(False)
+        if path is None:
+            event.ignore()
+            return
+        self.fileDropped.emit(path)
+        event.acceptProposedAction()

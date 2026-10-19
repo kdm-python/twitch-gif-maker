@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QProcess, Qt
 from PySide6.QtGui import QKeySequence
-from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QSplitter
+from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QMessageBox, QSplitter
 
 from gifmaker.gui.main_window import MainWindow
 from gifmaker.gui.shortcut_manager import ShortcutManager
@@ -45,6 +45,8 @@ def test_main_window_gives_more_space_to_preview_panels() -> None:
     window = MainWindow()
 
     assert window.preview_panel.video_widget.minimumHeight() <= 140
+    assert window.preview_panel.acceptDrops()
+    assert window.preview_panel.video_widget.acceptDrops()
     assert window.gif_preview_label.minimumHeight() <= 180
 
     sizes = window.preview_splitter.sizes()
@@ -52,6 +54,38 @@ def test_main_window_gives_more_space_to_preview_panels() -> None:
     assert sizes[1] >= 40
     assert sizes[2] >= 180
 
+    app.quit()
+
+
+def test_dropped_non_mp4_shows_an_explanatory_dialog(tmp_path: Path) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    unsupported = tmp_path / "clip.mov"
+    unsupported.write_bytes(b"video")
+
+    with patch.object(QMessageBox, "warning") as warning:
+        window.open_dropped_video(str(unsupported))
+
+    warning.assert_called_once()
+    assert warning.call_args.args[1] == "Unsupported video"
+    assert "Only MP4 videos" in warning.call_args.args[2]
+    app.quit()
+
+
+def test_dropped_mp4_uses_the_existing_video_loading_path(tmp_path: Path) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    source = tmp_path / "clip.MP4"
+    source.write_bytes(b"video")
+    video_info = object()
+
+    with patch("gifmaker.controllers.video_session_controller.probe_video", return_value=video_info), patch.object(
+        window.video_session_controller, "load_video_preview"
+    ) as load_preview:
+        window.open_dropped_video(str(source))
+
+    assert window.current_video_path == str(source)
+    load_preview.assert_called_once_with(str(source), video_info, None)
     app.quit()
 
 
