@@ -11,8 +11,12 @@ from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QMovie, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QMovie, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractSlider,
+    QDialog,
+    QDialogButtonBox,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,7 +31,7 @@ from PySide6.QtWidgets import (
 from gifmaker.controllers.render_controller import RenderController
 from gifmaker.controllers.video_session_controller import VideoSessionController
 from gifmaker.gui.preview_controller import PreviewController
-from gifmaker.gui.shortcut_manager import ShortcutManager
+from gifmaker.gui.shortcut_manager import SHORTCUT_HELP, ShortcutManager
 from gifmaker.gui.views.crop_overlay_label import CropOverlayLabel
 from gifmaker.gui.views.export_controls_panel import ExportControlsPanel
 from gifmaker.gui.views.video_preview_panel import VideoPreviewPanel
@@ -70,7 +74,9 @@ class MainWindow(QMainWindow):
         self._previous_video_path: str | None = None
         self._previous_source: QUrl | None = None
         self._previous_file_info_text = "No file loaded"
-        self._previous_meta_info_text = "Duration: - | Resolution: - | FPS: - | Codec: -"
+        self._previous_meta_info_text = (
+            "Duration: - | Resolution: - | FPS: - | Codec: -"
+        )
         self._restoring_previous_source = False
         self._current_crop: tuple[int, int, int, int] | None = None
         self._current_video_info: VideoInfo | None = None
@@ -94,10 +100,43 @@ class MainWindow(QMainWindow):
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
     def create_menu(self) -> None:
-        """Create the current placeholder menu structure."""
-        menu_bar = self.menuBar()
-        for name in ("File", "Edit", "View", "Help"):
-            menu_bar.addMenu(name)
+        """Create the application menu bar.
+
+        Add later File-menu options by creating another ``QAction`` here and
+        passing it to ``self.file_menu.addAction(...)``.
+        """
+        self.file_menu = self.menuBar().addMenu("File")
+        self.shortcuts_action = QAction("Shortcuts", self)
+        self.shortcuts_action.triggered.connect(self.show_shortcuts_dialog)
+        self.file_menu.addAction(self.shortcuts_action)
+
+    def show_shortcuts_dialog(self) -> QDialog:
+        """Open the grouped keyboard-shortcut reference window."""
+        dialog = QDialog(self)
+        dialog.setObjectName("shortcuts_dialog")
+        dialog.setWindowTitle("Keyboard Shortcuts")
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        for group_name, shortcuts in SHORTCUT_HELP:
+            group = QGroupBox(group_name, dialog)
+            grid = QGridLayout(group)
+            grid.setColumnStretch(1, 1)
+            for row, (key, description) in enumerate(shortcuts):
+                key_label = QLabel(key, group)
+                key_label.setStyleSheet("font-weight: 600;")
+                grid.addWidget(key_label, row, 0)
+                grid.addWidget(QLabel(description, group), row, 1)
+            layout.addWidget(group)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        buttons.rejected.connect(dialog.close)
+        layout.addWidget(buttons)
+        self.shortcuts_dialog = dialog
+        dialog.open()
+        return dialog
 
     def build_layout(self) -> None:
         """Assemble a preview-first workspace with secondary controls below it."""
@@ -142,11 +181,23 @@ class MainWindow(QMainWindow):
         """Keep established widget attributes available to controllers and integrations."""
         panel = self.preview_panel
         for name in (
-            "video_widget", "media_player", "audio_output", "play_button",
-            "playback_speed_combo", "set_start_button", "set_end_button",
-            "seek_slider", "seek_time_label", "mute_button", "selection_group",
-            "start_frame_label", "start_nudge_back_button", "start_nudge_forward_button",
-            "end_frame_label", "end_nudge_back_button", "end_nudge_forward_button",
+            "video_widget",
+            "media_player",
+            "audio_output",
+            "play_button",
+            "playback_speed_combo",
+            "set_start_button",
+            "set_end_button",
+            "seek_slider",
+            "seek_time_label",
+            "mute_button",
+            "selection_group",
+            "start_frame_label",
+            "start_nudge_back_button",
+            "start_nudge_forward_button",
+            "end_frame_label",
+            "end_nudge_back_button",
+            "end_nudge_forward_button",
             "clip_selection_label",
         ):
             setattr(self, name, getattr(panel, name))
@@ -157,11 +208,19 @@ class MainWindow(QMainWindow):
         panel = self.export_controls_panel
         for name in (
             "output_speed_slider",
-            "output_speed_value_label", "output_fps_combo",
-            "export_width_input", "export_height_input", "aspect_ratio_lock",
-            "original_size_button", "quality_preset_combo", "generate_preview_button", "apply_crop_button",
+            "output_speed_value_label",
+            "output_fps_combo",
+            "export_width_input",
+            "export_height_input",
+            "aspect_ratio_lock",
+            "original_size_button",
+            "quality_preset_combo",
+            "generate_preview_button",
+            "apply_crop_button",
             "sharpness_combo",
-            "reset_crop_button", "gif_preview_play_button", "gif_preview_pause_button",
+            "reset_crop_button",
+            "gif_preview_play_button",
+            "gif_preview_pause_button",
             "export_format_combo",
         ):
             setattr(self, name, getattr(panel, name))
@@ -174,7 +233,9 @@ class MainWindow(QMainWindow):
         self.gif_preview_label = CropOverlayLabel("Generate preview to display GIF")
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
         self.gif_preview_label.setMinimumHeight(180)
-        self.gif_preview_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.gif_preview_label.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
         self.gif_preview_label.cropChanged.connect(self._on_crop_changed)
         self.gif_preview_label.cropCleared.connect(self._on_crop_cleared)
@@ -192,7 +253,9 @@ class MainWindow(QMainWindow):
         info.setContentsMargins(0, 0, 0, 0)
         info.setSpacing(2)
         self.video_file_label = QLabel("No file loaded")
-        self.video_meta_label = QLabel("Duration: - | Resolution: - | FPS: - | Codec: -")
+        self.video_meta_label = QLabel(
+            "Duration: - | Resolution: - | FPS: - | Codec: -"
+        )
         self.export_status_label = QLabel("Status: -")
         self.output_summary_label = QLabel("Output: Select a clip range")
         row = QHBoxLayout()
@@ -211,7 +274,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.export_button)
         return toolbar
 
-    def update_video_info(self, file_path: str, *, duration: float, width: int, height: int, fps: float, codec: str) -> None:
+    def update_video_info(
+        self,
+        file_path: str,
+        *,
+        duration: float,
+        width: int,
+        height: int,
+        fps: float,
+        codec: str,
+    ) -> None:
         """Update the compact source-file metadata displayed in the footer."""
         self.video_file_label.setText(file_path)
         self.video_meta_label.setText(
@@ -252,19 +324,65 @@ class MainWindow(QMainWindow):
         self.resize(min(1050, available.width()), min(760, available.height()))
 
     # Shortcut adapters retain the existing ShortcutManager API.
-    def _shortcut_left(self) -> None: self._leftArrowPressed()
-    def _shortcut_right(self) -> None: self._rightArrowPressed()
-    def _shortcut_play_pause(self) -> None: self.toggle_preview_playback()
-    def _shortcut_toggle_mute(self) -> None: self.toggle_mute()
-    def _shortcut_speed_down(self) -> None: self.speed_down_playback()
-    def _shortcut_speed_up(self) -> None: self.speed_up_playback()
-    def _shortcut_start_set(self) -> None: self._startSetPressed()
-    def _shortcut_start_left(self) -> None: self._startSliderLeftPressed()
-    def _shortcut_start_right(self) -> None: self._startSliderRightPressed()
-    def _shortcut_end_set(self) -> None: self._endSetPressed()
-    def _shortcut_end_left(self) -> None: self._endSliderLeftPressed()
-    def _shortcut_end_right(self) -> None: self._endSliderRightPressed()
-    def _shortcut_open_file(self) -> None: self.open_file_dialog()
-    def _shortcut_export_file(self) -> None: self.export_gif_from_selection()
-    def _shortcut_apply_crop(self) -> None: self.apply_crop_to_preview()
-    def _shortcut_reset_crop(self) -> None: self.reset_preview_crop()
+    def _shortcut_left(self) -> None:
+        self._leftArrowPressed()
+
+    def _shortcut_right(self) -> None:
+        self._rightArrowPressed()
+
+    def _shortcut_play_pause(self) -> None:
+        self.toggle_preview_playback()
+
+    def _shortcut_toggle_mute(self) -> None:
+        self.toggle_mute()
+
+    def _shortcut_speed_down(self) -> None:
+        self.speed_down_playback()
+
+    def _shortcut_speed_up(self) -> None:
+        self.speed_up_playback()
+
+    def _shortcut_start_set(self) -> None:
+        self._startSetPressed()
+
+    def _shortcut_start_left(self) -> None:
+        self._startSliderLeftPressed()
+
+    def _shortcut_start_right(self) -> None:
+        self._startSliderRightPressed()
+
+    def _shortcut_end_set(self) -> None:
+        self._endSetPressed()
+
+    def _shortcut_end_left(self) -> None:
+        self._endSliderLeftPressed()
+
+    def _shortcut_end_right(self) -> None:
+        self._endSliderRightPressed()
+
+    def _shortcut_open_file(self) -> None:
+        self.open_file_dialog()
+
+    # GIF preview controls
+
+    def _shortcut_generate_gif_preview(self) -> None:
+        self.generate_gif_preview()
+
+    def _shortcut_export_file(self) -> None:
+        self.export_gif_from_selection()
+
+    def _shortcut_apply_crop(self) -> None:
+        self.apply_crop_to_preview()
+
+    def _shortcut_reset_crop(self) -> None:
+        self.reset_preview_crop()
+
+    def _shortcut_output_speed_down(self) -> None:
+        self.output_speed_slider.triggerAction(
+            QAbstractSlider.SliderAction.SliderSingleStepSub
+        )
+
+    def _shortcut_output_speed_up(self) -> None:
+        self.output_speed_slider.triggerAction(
+            QAbstractSlider.SliderAction.SliderSingleStepAdd
+        )

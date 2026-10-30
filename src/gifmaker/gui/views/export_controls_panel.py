@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -75,7 +75,9 @@ class ExportControlsPanel(QWidget):
         self.quality_preset_combo.addItem("Small file", "small")
         self.quality_preset_combo.addItem("Balanced", "balanced")
         self.quality_preset_combo.addItem("High quality", "high")
-        self.quality_preset_combo.setCurrentIndex(1)
+        self.quality_preset_combo.setCurrentIndex(
+            self.quality_preset_combo.findData("high")
+        )
         self.quality_preset_combo.setFixedWidth(112)
         self.quality_label = QLabel("WebP quality")
 
@@ -94,7 +96,9 @@ class ExportControlsPanel(QWidget):
         self.gif_preview_pause_button = QPushButton("Pause")
 
         self.export_format_combo = QComboBox()
-        self.export_format_combo.addItems(["GIF", "WebP"])
+        # WebP provides materially better visual quality for the Discord use
+        # case. GIF remains available as a compatibility fallback.
+        self.export_format_combo.addItems(["WebP", "GIF"])
 
         self.primary_row = QWidget(self)
         self.primary_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -173,10 +177,18 @@ class ExportControlsPanel(QWidget):
         self.export_height_input.valueChanged.connect(window.on_height_changed)
         self.aspect_ratio_lock.toggled.connect(window.on_render_setting_changed)
         self.original_size_button.clicked.connect(window.use_original_size)
-        self.output_fps_combo.currentIndexChanged.connect(window.on_render_setting_changed)
-        self.export_format_combo.currentIndexChanged.connect(window.on_output_format_changed)
-        self.quality_preset_combo.currentIndexChanged.connect(window.on_render_setting_changed)
-        self.sharpness_combo.currentIndexChanged.connect(window.on_render_setting_changed)
+        self.output_fps_combo.currentIndexChanged.connect(
+            window.on_render_setting_changed
+        )
+        self.export_format_combo.currentIndexChanged.connect(
+            window.on_output_format_changed
+        )
+        self.quality_preset_combo.currentIndexChanged.connect(
+            window.on_render_setting_changed
+        )
+        self.sharpness_combo.currentIndexChanged.connect(
+            window.on_render_setting_changed
+        )
         self.generate_preview_button.clicked.connect(window.generate_gif_preview)
         self.apply_crop_button.clicked.connect(window.apply_crop_to_preview)
         self.reset_crop_button.clicked.connect(window.reset_preview_crop)

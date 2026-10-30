@@ -24,6 +24,8 @@ Keyboard mappings:
     - Shift+G: Generate a GIF preview
     - a: Apply the current crop to the GIF preview
     - r: Reset the crop on the GIF preview
+    - [: Decrease output speed
+    - ]: Increase output speed
 
 
 """
@@ -38,6 +40,51 @@ from PySide6.QtGui import QKeySequence, QShortcut
 
 if TYPE_CHECKING:
     from gifmaker.gui.main_window import MainWindow
+
+
+# The File > Shortcuts window uses this same grouped list.  Add a shortcut here
+# whenever its binding is added below so the in-app reference stays accurate.
+SHORTCUT_HELP: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "Video player",
+        (
+            ("Left arrow", "Move video playback backward by 1 frame"),
+            ("Right arrow", "Move video playback forward by 1 frame"),
+            ("Space", "Toggle video playback"),
+            ("M", "Toggle mute"),
+            ("Comma", "Decrease source playback speed"),
+            ("Period", "Increase source playback speed"),
+        ),
+    ),
+    (
+        "Start and end frame controls",
+        (
+            ("C", "Set the start frame to the current video frame"),
+            ("Z", "Move the start frame backward by 1 frame"),
+            ("X", "Move the start frame forward by 1 frame"),
+            ("V", "Set the end frame to the current video frame"),
+            ("B", "Move the end frame backward by 1 frame"),
+            ("N", "Move the end frame forward by 1 frame"),
+        ),
+    ),
+    (
+        "File management",
+        (
+            ("Shift+O", "Open a video file"),
+            ("Shift+E", "Export the GIF or WebP"),
+        ),
+    ),
+    (
+        "GIF preview controls",
+        (
+            ("Shift+G", "Generate a GIF preview"),
+            ("A", "Apply the current crop to the GIF preview"),
+            ("R", "Reset the crop on the GIF preview"),
+            ("[", "Decrease output speed"),
+            ("]", "Increase output speed"),
+        ),
+    ),
+)
 
 
 class ShortcutManager:
@@ -74,16 +121,27 @@ class ShortcutManager:
             QKeySequence(Qt.SHIFT | Qt.Key.Key_E),
             window._shortcut_export_file,
         )
-        
-        # self._register(
-        #     "generate_gif_preview",
-        #     QKeySequence(Qt.SHIFT | Qt.Key.Key_G),
-        #     window._shortcut_export_file,
-        # )
-        
+
+        self._register(
+            "generate_gif_preview",
+            QKeySequence(Qt.SHIFT | Qt.Key.Key_G),
+            window._shortcut_generate_gif_preview,
+        )
+
         # GIF preview controls
         self._register("apply_crop", Qt.Key.Key_A, window._shortcut_apply_crop)
         self._register("reset_crop", Qt.Key.Key_R, window._shortcut_reset_crop)
+
+        self._register(
+            "output_speed_down",
+            Qt.Key.Key_BracketLeft,
+            window._shortcut_output_speed_down,
+        )
+        self._register(
+            "output_speed_up",
+            Qt.Key.Key_BracketRight,
+            window._shortcut_output_speed_up,
+        )
 
     def _register(
         self,
@@ -94,6 +152,8 @@ class ShortcutManager:
         sequence = QKeySequence(key)
         shortcut = QShortcut(sequence, self.window)
         shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        # Keep the native key-repeat events generated while a key is held.
+        shortcut.setAutoRepeat(True)
         shortcut.activated.connect(callback)
         self.shortcuts[name] = shortcut
         return shortcut

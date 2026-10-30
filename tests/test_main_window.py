@@ -127,16 +127,16 @@ def test_seek_slider_moves_media_player_to_frame_position_in_milliseconds() -> N
     app.quit()
 
 
-def test_export_format_combo_has_gif_and_webp_options() -> None:
+def test_export_format_combo_defaults_to_webp_with_gif_available() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
     combo = window.export_format_combo
     assert isinstance(combo, QComboBox)
     assert combo.count() == 2
-    assert combo.itemText(0) == "GIF"
-    assert combo.itemText(1) == "WebP"
-    assert combo.currentText() == "GIF"
+    assert combo.itemText(0) == "WebP"
+    assert combo.itemText(1) == "GIF"
+    assert combo.currentText() == "WebP"
 
     app.quit()
 
@@ -184,7 +184,41 @@ def test_shortcut_manager_registers_expected_key_bindings() -> None:
     assert manager.shortcuts["export_file"].key() == QKeySequence("Shift+E")
     assert manager.shortcuts["apply_crop"].key() == QKeySequence(Qt.Key.Key_A)
     assert manager.shortcuts["reset_crop"].key() == QKeySequence(Qt.Key.Key_R)
+    assert manager.shortcuts["output_speed_down"].key() == QKeySequence(Qt.Key.Key_BracketLeft)
+    assert manager.shortcuts["output_speed_up"].key() == QKeySequence(Qt.Key.Key_BracketRight)
+    assert manager.shortcuts["output_speed_down"].autoRepeat()
 
+    app.quit()
+
+
+def test_bracket_shortcuts_step_output_speed_slider() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.output_speed_slider.setValue(100)
+
+    window._shortcut_output_speed_down()
+    assert window.output_speed_slider.value() == 95
+
+    window._shortcut_output_speed_up()
+    assert window.output_speed_slider.value() == 100
+    app.quit()
+
+
+def test_file_menu_contains_shortcuts_action_and_opens_reference_dialog() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert [action.text() for action in window.file_menu.actions()] == ["Shortcuts"]
+    window.shortcuts_action.trigger()
+    dialog = window.shortcuts_dialog
+    assert dialog.windowTitle() == "Keyboard Shortcuts"
+    assert [group.title() for group in dialog.findChildren(QGroupBox)] == [
+        "Video player",
+        "Start and end frame controls",
+        "File management",
+        "GIF preview controls",
+    ]
+    dialog.close()
     app.quit()
 
 
@@ -229,9 +263,10 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.output_speed_slider.value() == 100
     assert window.output_fps_combo.currentData() == 24
     assert window.aspect_ratio_lock.isChecked()
-    assert window.quality_preset_combo.currentData() == "balanced"
+    assert window.export_format_combo.currentText() == "WebP"
+    assert window.quality_preset_combo.currentData() == "high"
     assert window.sharpness_combo.currentData() == "mild"
-    assert window.quality_preset_combo.isHidden()
+    assert not window.quality_preset_combo.isHidden()
 
     app.quit()
 
@@ -242,15 +277,12 @@ def test_quality_control_is_webp_only_and_gif_uses_its_fixed_palette() -> None:
     window.current_video_path = "input.mp4"
     window.clip_start_time = 0.0
     window.clip_end_time = 1.0
-    window.quality_preset_combo.setCurrentIndex(
-        window.quality_preset_combo.findData("high")
-    )
-
-    assert window.render_controller._resolve_render_settings().quality_preset == "balanced"
-
-    window.export_format_combo.setCurrentText("WebP")
-    assert not window.quality_preset_combo.isHidden()
     assert window.render_controller._resolve_render_settings().quality_preset == "high"
+    assert not window.quality_preset_combo.isHidden()
+
+    window.export_format_combo.setCurrentText("GIF")
+    assert window.quality_preset_combo.isHidden()
+    assert window.render_controller._resolve_render_settings().quality_preset == "balanced"
     app.quit()
 
 
