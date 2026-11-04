@@ -306,7 +306,9 @@ class VideoSessionController:
             return
         window.start_frame_label.setText(self._format_timestamp_from_frame(window.start_frame))
         window.end_frame_label.setText(self._format_timestamp_from_frame(window.end_frame))
-        window.clip_selection_label.setText(f"Selection: {window.clip_end_time - window.clip_start_time:.3f}s")
+        window.clip_selection_label.setText(
+            f"Selection: {window.clip_end_time - window.clip_start_time:.3f}s"
+        )
     def _leftArrowPressed(self) -> None:
         """Seek one source frame backwards."""
         frame_ms = int(1000 / self.window.current_video_fps)

@@ -1,5 +1,5 @@
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QSlider, QStyle, QStyleOptionSlider, QWidget
 
 
@@ -17,7 +17,8 @@ class MarkerSeekSlider(QSlider):
         self._end_frame = 0
         self._min_gap_frames = 2
         self._dragging_marker: str | None = None
-        self._marker_hit_radius = 8
+        self._marker_hit_radius = 12
+        self.setMinimumHeight(28)
 
     def set_total_frames(self, total_frames: int) -> None:
         """Set total frame count and ensure marker bounds remain valid."""
@@ -125,22 +126,30 @@ class MarkerSeekSlider(QSlider):
         )
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.Antialiasing)
 
         start_x = self._frame_to_x(self._start_frame)
         end_x = self._frame_to_x(self._end_frame)
 
-        if end_x > start_x:
-            selection_color = self.palette().highlight().color()
-            selection_color.setAlpha(90)
-            painter.fillRect(
-                start_x, groove.top(), end_x - start_x, groove.height(), selection_color
-            )
+        # The selection is deliberately a solid range rather than a thin line:
+        # it gives the two draggable ends a clear, generous target.
+        top = groove.center().y() - 8
+        height = 16
+        selection = QRectF(start_x, top, max(2, end_x - start_x), height)
+        fill = self.palette().highlight().color()
+        fill.setAlpha(190)
+        border = self.palette().highlight().color()
+        painter.setBrush(fill)
+        painter.setPen(QPen(border, 1.5))
+        painter.drawRoundedRect(selection, 4, 4)
 
-        marker_color = self.palette().highlight().color()
-        painter.setPen(marker_color)
-        painter.drawLine(start_x, groove.top() - 4, start_x, groove.bottom() + 4)
-        painter.drawLine(end_x, groove.top() - 4, end_x, groove.bottom() + 4)
+        # Strong vertical grips make it obvious that either boundary can move.
+        grip_pen = QPen(self.palette().highlightedText().color(), 2)
+        painter.setPen(grip_pen)
+        grip_top = top + 4
+        grip_bottom = top + height - 4
+        painter.drawLine(start_x, grip_top, start_x, grip_bottom)
+        painter.drawLine(end_x, grip_top, end_x, grip_bottom)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() != Qt.LeftButton or self._total_frames <= 0:

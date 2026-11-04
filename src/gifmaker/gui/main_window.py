@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QAbstractSlider,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -33,11 +34,27 @@ from gifmaker.controllers.video_session_controller import VideoSessionController
 from gifmaker.gui.preview_controller import PreviewController
 from gifmaker.gui.shortcut_manager import SHORTCUT_HELP, ShortcutManager
 from gifmaker.gui.themes import THEMES, apply_theme
+from gifmaker.gui.views.activity_indicator import ActivityIndicator
 from gifmaker.gui.views.crop_overlay_label import CropOverlayLabel
 from gifmaker.gui.views.export_controls_panel import ExportControlsPanel
 from gifmaker.gui.views.video_preview_panel import VideoPreviewPanel
 from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.video_info import VideoInfo
+
+
+class RenderStatusLabel(QLabel):
+    """Status text that automatically shows activity for active render jobs."""
+
+    def __init__(self, activity_indicator: ActivityIndicator, parent=None) -> None:
+        super().__init__(parent)
+        self._activity_indicator = activity_indicator
+
+    def setText(self, text: str) -> None:  # type: ignore[override]
+        self._activity_indicator.set_running(
+            text.startswith("Status: Generating preview")
+            or text.startswith("Status: Exporting")
+        )
+        super().setText(text)
 
 
 class MainWindow(QMainWindow):
@@ -143,6 +160,8 @@ class MainWindow(QMainWindow):
         self.theme_actions[self.current_theme].setChecked(True)
         self._theme_settings.setValue(self._THEME_SETTING_KEY, self.current_theme)
         self._theme_settings.sync()
+        if hasattr(self, "preview_panel"):
+            self.preview_panel.update_mute_button(self.audio_output.isMuted())
 
     def show_shortcuts_dialog(self) -> QDialog:
         """Open the grouped keyboard-shortcut reference window."""
@@ -290,11 +309,29 @@ class MainWindow(QMainWindow):
         self.video_meta_label = QLabel(
             "Duration: - | Resolution: - | FPS: - | Codec: -"
         )
-        self.export_status_label = QLabel("Status: -")
+        self.render_status_frame = QFrame(toolbar)
+        self.render_status_frame.setObjectName("render_status_frame")
+        self.render_status_frame.setStyleSheet(
+            "QFrame#render_status_frame {"
+            " background: palette(alternate-base);"
+            " border: 1px solid palette(mid);"
+            " border-radius: 6px;"
+            "}"
+        )
+        status_layout = QHBoxLayout(self.render_status_frame)
+        status_layout.setContentsMargins(7, 2, 7, 2)
+        status_layout.setSpacing(5)
+        self.render_activity_indicator = ActivityIndicator(self.render_status_frame)
+        self.export_status_label = RenderStatusLabel(
+            self.render_activity_indicator, self.render_status_frame
+        )
+        self.export_status_label.setText("Status: -")
+        status_layout.addWidget(self.render_activity_indicator)
+        status_layout.addWidget(self.export_status_label)
         self.output_summary_label = QLabel("Output: Select a clip range")
         row = QHBoxLayout()
         row.addWidget(self.video_meta_label)
-        row.addWidget(self.export_status_label)
+        row.addWidget(self.render_status_frame)
         row.addWidget(self.output_summary_label)
         row.addStretch(1)
         info.addWidget(self.video_file_label)

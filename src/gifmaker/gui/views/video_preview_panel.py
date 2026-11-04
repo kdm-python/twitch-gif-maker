@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStyle,
     QVBoxLayout,
 )
 
@@ -112,7 +114,9 @@ class VideoPreviewPanel(QGroupBox):
         self.seek_slider.set_total_frames(0)
 
         self.seek_time_label = QLabel("00:00:00 / 00:00:00")
-        self.mute_button = QPushButton("Mute")
+        self.mute_button = QPushButton()
+        self.mute_button.setFixedWidth(34)
+        self.update_mute_button(False)
 
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(QLabel("Playback Speed"))
@@ -209,6 +213,31 @@ class VideoPreviewPanel(QGroupBox):
         )
 
         self.mute_button.clicked.connect(window.toggle_mute)
+        self.audio_output.mutedChanged.connect(self.update_mute_button)
+
+    def update_mute_button(self, muted: bool) -> None:
+        """Use Qt's standard speaker glyphs, with accessible text as a fallback."""
+        icon = (
+            QStyle.StandardPixmap.SP_MediaVolumeMuted
+            if muted
+            else QStyle.StandardPixmap.SP_MediaVolume
+        )
+        standard_icon = self.style().standardIcon(icon)
+        size = QSize(16, 16)
+        source = standard_icon.pixmap(size)
+        tinted_icon = QPixmap(size)
+        tinted_icon.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(tinted_icon)
+        painter.drawPixmap(0, 0, source)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(tinted_icon.rect(), self.palette().buttonText())
+        painter.end()
+        self.mute_button.setIcon(QIcon(tinted_icon))
+        self.mute_button.setIconSize(size)
+        self.mute_button.setText("")
+        label = "Unmute video audio" if muted else "Mute video audio"
+        self.mute_button.setToolTip(label)
+        self.mute_button.setAccessibleName(label)
 
     @staticmethod
     def _local_file_from_event(event) -> str | None:

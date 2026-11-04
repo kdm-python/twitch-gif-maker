@@ -163,6 +163,38 @@ def test_reset_preview_crop_clears_box_and_window_state() -> None:
     app.quit()
 
 
+def test_reset_preview_crop_restores_source_aspect_for_preview_and_export(
+    tmp_path: Path,
+) -> None:
+    """Reset must not reuse square/tall output dimensions from an applied crop."""
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    source = tmp_path / "input.mp4"
+    source.write_bytes(b"video")
+    window.current_video_path = str(source)
+    window.clip_start_time = 0.0
+    window.clip_end_time = 1.0
+    window._current_video_info = type("Video", (), {"width": 1920, "height": 1080})()
+    window._current_crop = (100, 100, 800, 800)
+    window.export_width_input.setValue(640)
+    window.export_height_input.setValue(640)
+    window.gif_preview_label.set_video_size(1920, 1080)
+    window.gif_preview_label.set_coordinate_space(window._current_crop)
+
+    with patch.object(window.render_controller.render_service, "build_command") as build_mock, patch.object(
+        window.render_controller, "_start_process"
+    ):
+        window.reset_preview_crop()
+
+    assert window._current_crop is None
+    assert window.gif_preview_label._coordinate_space == (0, 0, 1920, 1080)
+    assert window.export_width_input.value() == 640
+    assert window.export_height_input.value() == 360
+    assert build_mock.call_args.args[0].settings.crop is None
+    assert build_mock.call_args.args[0].settings.height == 360
+    app.quit()
+
+
 def test_shortcut_manager_registers_expected_key_bindings() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
@@ -217,7 +249,7 @@ def test_file_menu_contains_shortcuts_action_and_opens_reference_dialog() -> Non
         "Light",
         "Dark",
     ]
-    assert window.theme_actions["light"].isChecked()
+    assert window.theme_actions[window.current_theme].isChecked()
     window.shortcuts_action.trigger()
     dialog = window.shortcuts_dialog
     assert dialog.windowTitle() == "Keyboard Shortcuts"
@@ -288,6 +320,9 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.preview_panel.selection_group.title() == "Selection"
     assert window.preview_panel.selection_group.maximumHeight() <= 64
     assert window.preview_panel.selection_group.parentWidget() is window.preview_splitter
+    assert window.clip_selection_label.text() == "Selection: Not selected"
+    assert window.mute_button.text() == ""
+    assert window.mute_button.toolTip() == "Mute video audio"
     assert window.open_button.text() == "Open Video File"
     assert window.output_speed_slider.minimum() == 25
     assert window.output_speed_slider.maximum() == 300
@@ -299,6 +334,18 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.sharpness_combo.currentData() == "mild"
     assert not window.quality_preset_combo.isHidden()
 
+    app.quit()
+
+
+def test_render_status_shows_activity_indicator_for_preview_generation() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.export_status_label.setText("Status: Generating preview...")
+    assert window.render_activity_indicator._timer.isActive()
+
+    window.export_status_label.setText("Status: Preview ready. Click Export to save.")
+    assert not window.render_activity_indicator._timer.isActive()
     app.quit()
 
 

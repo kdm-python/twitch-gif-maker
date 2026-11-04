@@ -433,10 +433,18 @@ class RenderController:
             self.generate_gif_preview()
 
     def reset_preview_crop(self) -> None:
-        """Clear the crop selection and regenerate the uncropped preview."""
-        self.window._current_crop = None
-        self.window.gif_preview_label.clear_crop()
-        if self.window.current_video_path is not None:
+        """Restore the full source aspect ratio and regenerate its preview.
+
+        An applied crop clears the overlay after rendering, so calling only
+        ``clear_crop`` here may not emit ``cropCleared``.  Reset the coordinate
+        space and linked output dimensions explicitly to avoid rendering a full
+        frame at the former crop's aspect ratio.
+        """
+        window = self.window
+        window._current_crop = None
+        window.gif_preview_label.set_coordinate_space(None)
+        self.on_crop_dimensions_changed()
+        if window.current_video_path is not None:
             self.generate_gif_preview()
 
     def _on_crop_changed(self, x: int, y: int, width: int, height: int) -> None:
