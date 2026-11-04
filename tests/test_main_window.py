@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, QSettings, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QMessageBox, QSplitter
 
@@ -208,7 +208,16 @@ def test_file_menu_contains_shortcuts_action_and_opens_reference_dialog() -> Non
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
-    assert [action.text() for action in window.file_menu.actions()] == ["Shortcuts"]
+    assert [action.text() for action in window.file_menu.actions()] == [
+        "Shortcuts",
+        "",
+        "Theme",
+    ]
+    assert [action.text() for action in window.theme_menu.actions()] == [
+        "Light",
+        "Dark",
+    ]
+    assert window.theme_actions["light"].isChecked()
     window.shortcuts_action.trigger()
     dialog = window.shortcuts_dialog
     assert dialog.windowTitle() == "Keyboard Shortcuts"
@@ -219,6 +228,28 @@ def test_file_menu_contains_shortcuts_action_and_opens_reference_dialog() -> Non
         "GIF preview controls",
     ]
     dialog.close()
+    app.quit()
+
+
+def test_theme_menu_applies_dark_and_restores_saved_choice_on_next_window() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.theme_actions["dark"].trigger()
+    assert window.current_theme == "dark"
+    assert window.theme_actions["dark"].isChecked()
+    assert "#17191f" in app.styleSheet()
+
+    reopened_window = MainWindow()
+    assert reopened_window.current_theme == "dark"
+    assert reopened_window.theme_actions["dark"].isChecked()
+
+    reopened_window.theme_actions["light"].trigger()
+    assert reopened_window.current_theme == "light"
+    assert reopened_window.theme_actions["light"].isChecked()
+    assert app.styleSheet() == ""
+    settings = QSettings("T10Nat", "GIF Maker")
+    assert settings.value(MainWindow._THEME_SETTING_KEY) == "light"
     app.quit()
 
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QMovie, QPixmap
+from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QGuiApplication, QMovie, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSlider,
     QDialog,
@@ -32,6 +32,7 @@ from gifmaker.controllers.render_controller import RenderController
 from gifmaker.controllers.video_session_controller import VideoSessionController
 from gifmaker.gui.preview_controller import PreviewController
 from gifmaker.gui.shortcut_manager import SHORTCUT_HELP, ShortcutManager
+from gifmaker.gui.themes import THEMES, apply_theme
 from gifmaker.gui.views.crop_overlay_label import CropOverlayLabel
 from gifmaker.gui.views.export_controls_panel import ExportControlsPanel
 from gifmaker.gui.views.video_preview_panel import VideoPreviewPanel
@@ -43,6 +44,7 @@ class MainWindow(QMainWindow):
     """Compose the application views and delegate interactions to controllers."""
 
     selection_changed = Signal(int, int)
+    _THEME_SETTING_KEY = "appearance/theme"
 
     def __init__(self) -> None:
         super().__init__()
@@ -52,6 +54,12 @@ class MainWindow(QMainWindow):
         self.render_controller = RenderController(self)
 
         self.setWindowTitle("GIF Maker")
+        self._theme_settings = QSettings("T10Nat", "GIF Maker")
+        saved_theme = self._theme_settings.value(self._THEME_SETTING_KEY, "light")
+        self.current_theme = saved_theme if saved_theme in THEMES else "light"
+        application = QGuiApplication.instance()
+        if application is not None:
+            apply_theme(application, self.current_theme)
         self.create_menu()
         self.build_layout()
         self.shortcut_manager = ShortcutManager(self)
@@ -109,6 +117,32 @@ class MainWindow(QMainWindow):
         self.shortcuts_action = QAction("Shortcuts", self)
         self.shortcuts_action.triggered.connect(self.show_shortcuts_dialog)
         self.file_menu.addAction(self.shortcuts_action)
+        self.file_menu.addSeparator()
+
+        self.theme_menu = self.file_menu.addMenu("Theme")
+        self.theme_action_group = QActionGroup(self)
+        self.theme_action_group.setExclusive(True)
+        self.theme_actions: dict[str, QAction] = {}
+        for name, theme in THEMES.items():
+            action = QAction(theme.label, self, checkable=True)
+            action.triggered.connect(
+                lambda checked, theme_name=name: checked
+                and self.set_theme(theme_name)
+            )
+            self.theme_action_group.addAction(action)
+            self.theme_menu.addAction(action)
+            self.theme_actions[name] = action
+        self.theme_actions[self.current_theme].setChecked(True)
+
+    def set_theme(self, theme_name: str) -> None:
+        """Apply one of the registered themes and update the File-menu state."""
+        application = QGuiApplication.instance()
+        if application is None:
+            return
+        self.current_theme = apply_theme(application, theme_name)
+        self.theme_actions[self.current_theme].setChecked(True)
+        self._theme_settings.setValue(self._THEME_SETTING_KEY, self.current_theme)
+        self._theme_settings.sync()
 
     def show_shortcuts_dialog(self) -> QDialog:
         """Open the grouped keyboard-shortcut reference window."""
