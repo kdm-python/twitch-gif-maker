@@ -6,7 +6,7 @@ version = "0.4.6"
 description = "Cross-platform colored terminal text."
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
-groups = ["dev"]
+groups = ["main", "dev"]
 markers = "sys_platform == \"win32\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
@@ -31,7 +31,7 @@ version = "0.7.3"
 description = "Python logging made (stupidly) simple"
 optional = false
 python-versions = "<4.0,>=3.5"
-groups = ["dev"]
+groups = ["main"]
 files = [
     {file = "loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c"},
     {file = "loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6"},
@@ -215,7 +215,7 @@ version = "1.2.0"
 description = "A small Python utility to set file creation time on Windows"
 optional = false
 python-versions = ">=3.5"
-groups = ["dev"]
+groups = ["main"]
 markers = "sys_platform == \"win32\""
 files = [
     {file = "win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390"},
@@ -225,7 +225,29 @@ files = [
 [package.extras]
 dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 
+[[package]]
+name = "yt-dlp"
+version = "2026.10.26"
+description = "A feature-rich command-line audio/video downloader"
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+files = [
+    {file = "yt_dlp-2026.10.26-py3-none-any.whl", hash = "sha256:a05c5b5d8562f7e8a62f5334348b406af4930d56d3a65f8021d14af0e22339ae"},
+    {file = "yt_dlp-2026.10.26.tar.gz", hash = "sha256:abe5c6b94c3b2f0560500add1c42e0a97641752743a5b65588ac2007a6e23eb6"},
+]
+
+[package.extras]
+curl-cffi = ["curl-cffi (>=0.5.10,<0.6.dev0 || >=0.10.dev0,<0.18) ; implementation_name == \"cpython\""]
+default = ["brotli ; implementation_name == \"cpython\" and sys_platform != \"ios\"", "brotlicffi ; implementation_name != \"cpython\"", "certifi (>=2026.10.19)", "mutagen", "pycryptodomex", "requests (>=2.32.2,<3)", "urllib3 (>=2.0.2,<3)", "websockets (>=13.0)", "yt-dlp-ejs (==0.8.0)"]
+deno = ["deno (>=2.9.8)"]
+pin = ["brotli (==1.2.1) ; implementation_name == \"cpython\" and sys_platform != \"ios\"", "brotlicffi (==1.2.1.0) ; implementation_name != \"cpython\"", "certifi (==2026.10.23)", "charset-normalizer (==3.5.2)", "idna (==3.20)", "mutagen (==1.48.1)", "pycparser (==3.11) ; implementation_name != \"PyPy\" and implementation_name != \"cpython\"", "pycryptodomex (==3.24.1)", "requests (==2.34.2)", "urllib3 (==2.8.0)", "websockets (==17.3)", "yt-dlp-ejs (==0.8.0)"]
+pin-curl-cffi = ["certifi (==2026.10.23) ; implementation_name == \"cpython\"", "cffi (==2.1.1) ; implementation_name == \"cpython\"", "curl-cffi (==0.17.0) ; implementation_name == \"cpython\"", "pycparser (==3.11) ; implementation_name == \"cpython\""]
+pin-deno = ["deno (==2.9.8)"]
+pin-secretstorage = ["cffi (==2.1.1) ; platform_python_implementation != \"PyPy\"", "cryptography (==50.0.2)", "jeepney (==0.9.0)", "pycparser (==3.11) ; implementation_name != \"PyPy\" and platform_python_implementation != \"PyPy\"", "secretstorage (==3.5.0)"]
+secretstorage = ["secretstorage"]
+
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.15"
-content-hash = "eb65661c38a29bf8d6b13fae27cb07156719b28f4c89b08add0d2d3bcf2a502d"
+content-hash = "cd6fe7f85a0cd92b250a11c78d73f625bfc36378e61028d5937291679d59dce6"

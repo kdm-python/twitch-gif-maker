@@ -71,6 +71,7 @@ SHORTCUT_HELP: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         "File management",
         (
             ("Shift+O", "Open a video file"),
+            ("Shift+L", "Open a Twitch clip"),
             ("Shift+E", "Export the GIF or WebP"),
         ),
     ),
@@ -115,6 +116,11 @@ class ShortcutManager:
             "open_file",
             QKeySequence(Qt.SHIFT | Qt.Key.Key_O),
             window._shortcut_open_file,
+        )
+        self._register(
+            "open_clip",
+            QKeySequence(Qt.SHIFT | Qt.Key.Key_L),
+            window._shortcut_open_clip,
         )
         self._register(
             "export_file",

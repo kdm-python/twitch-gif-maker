@@ -5,17 +5,16 @@ description = ""
 authors = [{ name = "Kyle Marden", email = "demolaze@Mac.home" }]
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
-dependencies = ["pyside6 (>=6.11.1,<7.0.0)"]
+dependencies = ["pyside6 (>=6.11.1,<7.0.0)", "yt-dlp (>=2026.10.26,<2027.0.0)", "loguru (>=0.7.3,<0.8.0)"]
 
 [project.scripts]
-gifmaker = "src.gifmaker.main:main"
+gifmaker = "gifmaker.main:main"
 
 [tool.poetry]
 packages = [{ include = "gifmaker", from = "src" }]
 
 
 [tool.poetry.group.dev.dependencies]
-loguru = "^0.7.3"
 pytest = "^9.1.1"
 ruff = "^0.16.1"
 

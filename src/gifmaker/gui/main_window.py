@@ -338,10 +338,13 @@ class MainWindow(QMainWindow):
         info.addLayout(row)
         self.open_button = QPushButton("Open Video File")
         self.open_button.clicked.connect(self.open_file_dialog)
+        self.clip_button = QPushButton("Open Twitch Clip")
+        self.clip_button.clicked.connect(self.open_clip_dialog)
         self.export_button = QPushButton("Export")
         self.export_button.clicked.connect(self.export_gif_from_selection)
         layout.addLayout(info, stretch=1)
         layout.addWidget(self.open_button)
+        layout.addWidget(self.clip_button)
         layout.addWidget(self.export_button)
         return toolbar
 
@@ -370,6 +373,9 @@ class MainWindow(QMainWindow):
         """Release temporary preview assets when the application closes."""
         self.render_controller.cancel_active_renders()
         self.render_controller.clear_preview_state(remove_temp_file=True)
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
+        self.video_session_controller.cleanup_clip_downloads()
         super().closeEvent(event)
 
     # PreviewController callback adapters.  Keeping these stable lets the
@@ -430,6 +436,9 @@ class MainWindow(QMainWindow):
 
     def _shortcut_end_right(self) -> None:
         self._endSliderRightPressed()
+
+    def _shortcut_open_clip(self) -> None:
+        self.open_clip_dialog()
 
     def _shortcut_open_file(self) -> None:
         self.open_file_dialog()

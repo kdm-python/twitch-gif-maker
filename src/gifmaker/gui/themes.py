@@ -150,11 +150,13 @@ QToolTip {
 }
 """
 
+MEDIUM_STYLESHEET = ""
 
 THEMES: dict[str, Theme] = {
     # The existing, native-looking grey interface intentionally has no custom
     # stylesheet.  Keeping it explicit makes it a proper selectable theme.
     "light": Theme("Light", None),
+    # "medium": Theme("Medium", None, MEDIUM_STYLESHEET),
     "dark": Theme("Dark", _dark_palette(), DARK_STYLESHEET),
 }
 

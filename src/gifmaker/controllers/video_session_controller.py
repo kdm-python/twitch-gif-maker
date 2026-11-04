@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from loguru import logger
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QProcess, QUrl
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from gifmaker.models.render_settings import (
     duration_to_frame_count,
@@ -14,6 +18,7 @@ from gifmaker.models.render_settings import (
     frame_to_ms,
     ms_to_frame,
 )
+from gifmaker.services.clip_downloader import ClipDownloadError, validate_clip_url
 from gifmaker.video.probe import VideoProbeError, probe_video
 
 
@@ -27,6 +32,63 @@ class VideoSessionController:
 
     def __init__(self, window) -> None:
         self.window = window
+        self._clip_temp_dir = None
+        self._clip_process = None
+        self._clip_counter = 0
+
+    def open_clip_dialog(self) -> None:
+        if self._clip_process is not None:
+            return
+        url, accepted = QInputDialog.getText(self.window, "Open Twitch Clip", "Twitch clip URL:")
+        if not accepted:
+            return
+        try:
+            url = validate_clip_url(url)
+        except ClipDownloadError as exc:
+            QMessageBox.warning(self.window, "Invalid clip link", str(exc))
+            return
+        if self._clip_temp_dir is None:
+            self._clip_temp_dir = TemporaryDirectory(prefix="gifmaker-clips-")
+        self._clip_counter += 1
+        target = Path(self._clip_temp_dir.name) / str(self._clip_counter)
+        process = QProcess(self.window)
+        self._clip_process = process
+        self.window.clip_button.setEnabled(False)
+        self.window.clip_button.setText("Downloading clip…")
+        process.finished.connect(lambda code, status: self._clip_download_finished(process, target, code, status))
+        process.errorOccurred.connect(lambda error: self._clip_process_error(process, error))
+        process.start(sys.executable, ["-m", "gifmaker.services.clip_downloader", url, str(target)])
+
+    def _clip_process_error(self, process, error) -> None:
+        if error == QProcess.ProcessError.FailedToStart and self._clip_process is process:
+            self._finish_clip_process(process)
+            QMessageBox.warning(self.window, "Could not download clip", process.errorString())
+
+    def _clip_download_finished(self, process, target, code, status) -> None:
+        if self._clip_process is not process:
+            return
+        error = bytes(process.readAllStandardError()).decode(errors="replace").strip()
+        self._finish_clip_process(process)
+        if code != 0 or status != QProcess.ExitStatus.NormalExit:
+            QMessageBox.warning(self.window, "Could not download clip", error or "The clip download failed.")
+            return
+        self.open_video_path(str(target / "clip.mp4"))
+
+    def _finish_clip_process(self, process) -> None:
+        self._clip_process = None
+        self.window.clip_button.setEnabled(True)
+        self.window.clip_button.setText("Open Twitch Clip")
+        process.deleteLater()
+
+    def cleanup_clip_downloads(self) -> None:
+        if self._clip_process is not None:
+            process = self._clip_process
+            self._clip_process = None
+            process.kill()
+            process.waitForFinished(3000)
+        if self._clip_temp_dir is not None:
+            self._clip_temp_dir.cleanup()
+            self._clip_temp_dir = None
 
     def open_file_dialog(self) -> None:
         """Ask the user for a video and probe it before changing the player."""
