@@ -35,6 +35,8 @@ class RenderController:
         self.window = window
         self.render_service = RenderService()
         self._preview_job: _RenderProcessJob | None = None
+        self.preview_locked = False
+        self._refresh_after_unlock = False
         self._export_job: _RenderProcessJob | None = None
         self._preview_debounce = QTimer(window)
         self._preview_debounce.setSingleShot(True)
@@ -92,7 +94,8 @@ class RenderController:
         """Update output-speed feedback and apply it to the live GIF preview."""
         speed = value / 100
         self.window.output_speed_value_label.setText(f"{speed:g}×")
-        self.window.preview_controller.set_playback_speed(speed)
+        if not self.preview_locked:
+            self.window.preview_controller.set_playback_speed(speed)
         self.on_render_setting_changed()
 
     def on_render_setting_changed(self, _value=None) -> None:
@@ -100,13 +103,42 @@ class RenderController:
         should_refresh_preview = bool(
             self.window._last_preview_spec is not None or self._preview_job is not None
         )
+        if self.preview_locked and self._preview_job is not None:
+            self._refresh_after_unlock = True
         self.window._render_revision += 1
         self._cancel_stale_preview_job()
         self.update_output_summary()
-        if should_refresh_preview:
+        if should_refresh_preview and not self.preview_locked:
             self._schedule_preview_refresh()
         else:
             self._show_preview_stale_state()
+
+    def set_preview_locked(self, locked: bool) -> None:
+        """Switch between automatic and explicitly requested preview updates."""
+        if locked == self.preview_locked:
+            return
+        self.preview_locked = locked
+        if locked:
+            self._refresh_after_unlock = bool(self._preview_job or self._preview_debounce.isActive())
+            self._preview_debounce.stop()
+            self._cancel_preview_job()
+            self.window.export_status_label.setText("Status: Preview locked.")
+            self._show_preview_stale_state()
+            return
+
+        had_pending = self._refresh_after_unlock
+        self._refresh_after_unlock = False
+        if self.window._last_preview_spec is None and not had_pending:
+            return
+        try:
+            current = self._resolve_render_spec(output_format="GIF")
+        except ValueError:
+            return
+        if current != self.window._last_preview_spec:
+            self.generate_gif_preview()
+        else:
+            self.window.preview_controller.set_playback_speed(current.settings.playback_speed)
+            self.window.export_status_label.setText("Status: Preview ready. Click Export to save.")
 
     def on_width_changed(self, width: int) -> None:
         """Keep output height proportional when aspect locking is enabled."""
@@ -375,9 +407,15 @@ class RenderController:
                     f"Status: Preview failed: {message or 'ffmpeg exited unsuccessfully'}"
                 )
             return
+        previous_settings = self.window._last_preview_settings
+        previous_speed = self.window.preview_controller._preview_speed()
+        self.window._last_preview_settings = job.spec.settings
+        self.window.preview_controller.set_playback_speed(job.spec.settings.playback_speed)
         try:
             self.window.preview_controller.set_movie(job.destination)
         except RuntimeError as exc:
+            self.window._last_preview_settings = previous_settings
+            self.window.preview_controller.set_playback_speed(previous_speed)
             self.remove_temp_file_if_exists(job.destination)
             self.window.export_status_label.setText(f"Status: Preview failed: {exc}")
             return
@@ -429,8 +467,10 @@ class RenderController:
             self.window.export_status_label.setText("Status: Load a video first.")
         elif self.window._current_crop is None:
             self.window.export_status_label.setText("Status: Draw a crop selection first.")
-        else:
+        elif not self.preview_locked:
             self.generate_gif_preview()
+        else:
+            self._show_preview_stale_state()
 
     def reset_preview_crop(self) -> None:
         """Restore the full source aspect ratio and regenerate its preview.
@@ -442,9 +482,12 @@ class RenderController:
         """
         window = self.window
         window._current_crop = None
-        window.gif_preview_label.set_coordinate_space(None)
+        if not self.preview_locked:
+            window.gif_preview_label.set_coordinate_space(None)
+        else:
+            window.gif_preview_label.clear_crop()
         self.on_crop_dimensions_changed()
-        if window.current_video_path is not None:
+        if window.current_video_path is not None and not self.preview_locked:
             self.generate_gif_preview()
 
     def _on_crop_changed(self, x: int, y: int, width: int, height: int) -> None:
@@ -468,6 +511,7 @@ class RenderController:
     def clear_preview_state(self, *, remove_temp_file: bool) -> None:
         """Dispose of preview playback and optionally delete its temporary file."""
         self._preview_debounce.stop()
+        self._refresh_after_unlock = False
         self._cancel_preview_job()
         self.window.preview_controller.clear(remove_temp_file=remove_temp_file)
 

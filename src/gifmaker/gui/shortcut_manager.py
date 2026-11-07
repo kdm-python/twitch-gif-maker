@@ -26,7 +26,11 @@ Keyboard mappings:
     - r: Reset the crop on the GIF preview
     - [: Decrease output speed
     - ]: Increase output speed
+- Work mode
+    - l: Toggle live update or static mode
 
+Live mode: automatically apply changes to the GIF preview as you adjust settings.
+Static mode: will only apply changes when you explicitly generate the GIF preview.
 
 """
 
@@ -85,6 +89,7 @@ SHORTCUT_HELP: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("]", "Increase output speed"),
         ),
     ),
+    ("Work mode", (("L", "Toggle live preview / locked preview"),)),
 )
 
 
@@ -137,6 +142,9 @@ class ShortcutManager:
         # GIF preview controls
         self._register("apply_crop", Qt.Key.Key_A, window._shortcut_apply_crop)
         self._register("reset_crop", Qt.Key.Key_R, window._shortcut_reset_crop)
+        self._register(
+            "toggle_preview_lock", Qt.Key.Key_L, window.preview_lock_button.toggle
+        ).setAutoRepeat(False)
 
         self._register(
             "output_speed_down",

@@ -7,11 +7,23 @@ widgets live in :mod:`gifmaker.gui.views`.
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QGuiApplication, QMovie, QPixmap
+from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QCloseEvent,
+    QGuiApplication,
+    QIcon,
+    QMovie,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QAbstractSlider,
     QDialog,
@@ -25,6 +37,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -55,6 +68,21 @@ class RenderStatusLabel(QLabel):
             or text.startswith("Status: Exporting")
         )
         super().setText(text)
+
+
+def load_documentation() -> str:
+    """Read the source README, or its packaged copy in distribution metadata."""
+    project_root = Path(__file__).resolve().parents[3]
+    readme = project_root / "README.md"
+    if (project_root / "pyproject.toml").is_file() and readme.is_file():
+        return readme.read_text(encoding="utf-8")
+    try:
+        description = metadata("gifmaker").get_payload()
+    except PackageNotFoundError as exc:
+        raise OSError("The application documentation could not be found.") from exc
+    if not isinstance(description, str) or not description.strip():
+        raise OSError("The application documentation is empty or unavailable.")
+    return description
 
 
 class MainWindow(QMainWindow):
@@ -134,6 +162,9 @@ class MainWindow(QMainWindow):
         self.shortcuts_action = QAction("Shortcuts", self)
         self.shortcuts_action.triggered.connect(self.show_shortcuts_dialog)
         self.file_menu.addAction(self.shortcuts_action)
+        self.documentation_action = QAction("Documentation", self)
+        self.documentation_action.triggered.connect(self.show_documentation_dialog)
+        self.file_menu.addAction(self.documentation_action)
         self.file_menu.addSeparator()
 
         self.theme_menu = self.file_menu.addMenu("Theme")
@@ -162,6 +193,8 @@ class MainWindow(QMainWindow):
         self._theme_settings.sync()
         if hasattr(self, "preview_panel"):
             self.preview_panel.update_mute_button(self.audio_output.isMuted())
+        if hasattr(self, "preview_lock_button"):
+            self._update_preview_lock_button(self.preview_lock_button.isChecked())
 
     def show_shortcuts_dialog(self) -> QDialog:
         """Open the grouped keyboard-shortcut reference window."""
@@ -188,6 +221,28 @@ class MainWindow(QMainWindow):
         buttons.rejected.connect(dialog.close)
         layout.addWidget(buttons)
         self.shortcuts_dialog = dialog
+        dialog.open()
+        return dialog
+
+    def show_documentation_dialog(self) -> QDialog:
+        """Display the README as scrollable Markdown, including in installs."""
+        dialog = QDialog(self)
+        dialog.setObjectName("documentation_dialog")
+        dialog.setWindowTitle("Documentation")
+        dialog.resize(800, 650)
+        layout = QVBoxLayout(dialog)
+        browser = QTextBrowser(dialog)
+        browser.setObjectName("documentation_browser")
+        browser.setOpenExternalLinks(True)
+        try:
+            browser.setMarkdown(load_documentation())
+        except (OSError, UnicodeError) as exc:
+            browser.setPlainText(f"Unable to load documentation: {exc}")
+        layout.addWidget(browser)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        buttons.rejected.connect(dialog.close)
+        layout.addWidget(buttons)
+        self.documentation_dialog = dialog
         dialog.open()
         return dialog
 
@@ -342,11 +397,58 @@ class MainWindow(QMainWindow):
         self.clip_button.clicked.connect(self.open_clip_dialog)
         self.export_button = QPushButton("Export")
         self.export_button.clicked.connect(self.export_gif_from_selection)
+        self.preview_lock_button = QPushButton()
+        self.preview_lock_button.setCheckable(True)
+        self.preview_lock_button.setFixedWidth(34)
+        self.preview_lock_button.toggled.connect(self._set_preview_locked)
+        self._update_preview_lock_button(False)
+        layout.addWidget(self.preview_lock_button)
         layout.addLayout(info, stretch=1)
         layout.addWidget(self.open_button)
         layout.addWidget(self.clip_button)
         layout.addWidget(self.export_button)
         return toolbar
+
+    def _set_preview_locked(self, locked: bool) -> None:
+        self._update_preview_lock_button(locked)
+        self.render_controller.set_preview_locked(locked)
+
+    def _update_preview_lock_button(self, locked: bool) -> None:
+        """Draw a closed or open padlock using the active theme's colours."""
+        size = QSize(20, 20)
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        colour = (
+            self.palette().highlight().color()
+            if locked
+            else self.palette().buttonText().color()
+        )
+        painter.setPen(QPen(colour, 1.8))
+        shackle = QPainterPath()
+        if locked:
+            shackle.moveTo(6, 9)
+            shackle.lineTo(6, 6)
+            shackle.cubicTo(6, 1, 14, 1, 14, 6)
+            shackle.lineTo(14, 9)
+        else:
+            shackle.moveTo(6, 9)
+            shackle.lineTo(6, 6)
+            shackle.cubicTo(6, 1, 14, 1, 14, 6)
+        painter.drawPath(shackle)
+        painter.drawRoundedRect(QRectF(4, 9, 12, 9), 2, 2)
+        painter.drawPoint(10, 13)
+        painter.end()
+        self.preview_lock_button.setIcon(QIcon(pixmap))
+        self.preview_lock_button.setIconSize(size)
+        label = (
+            "Preview locked — click to enable live updates (L)"
+            if locked
+            else "Live preview — click to lock updates (L)"
+        )
+        self.preview_lock_button.setToolTip(label)
+        self.preview_lock_button.setAccessibleName(label)
 
     def update_video_info(
         self,

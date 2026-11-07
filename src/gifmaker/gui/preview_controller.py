@@ -15,6 +15,7 @@ class PreviewController:
     def __init__(self, window) -> None:
         self.window = window
         self.preview_label = None
+        self._playback_speed = 1.0
 
     def bind(self, preview_label) -> None:
         """Attach the label that renders the generated preview."""
@@ -26,7 +27,7 @@ class PreviewController:
         return settings.playback_speed if settings is not None else 1.0
 
     def _preview_speed(self) -> float:
-        return self.window.output_speed_slider.value() / 100
+        return self._playback_speed
 
     def _frame_delay(self, index: int) -> int:
         """Return a cached frame's delay adjusted to the selected output speed."""
@@ -40,6 +41,7 @@ class PreviewController:
         """Immediately retime the generated-animation preview without rendering."""
         if speed <= 0:
             return
+        self._playback_speed = speed
         if self.window._preview_frame_cache and self.window._preview_frame_timer is not None:
             if self.window._preview_frame_timer.isActive():
                 self.window._preview_frame_timer.start(
