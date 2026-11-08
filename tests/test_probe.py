@@ -1,40 +1,32 @@
-"""
-Testing functionality of the VideoInfo class and the video probe functionality.
-"""
+"""Frame-rate parsing and metadata fallback for source videos."""
+import json
+from unittest.mock import patch
 
-from gifmaker.video.probe import _parse_fps, probe_video, VideoProbeError
+import pytest
 
-# --- _parse_fps() ---
-
-
-def test_parse_fps_integer():
-    assert _parse_fps("60/1") == 60.0
+from gifmaker.video.probe import VideoProbeError, _parse_fps, probe_video
 
 
-def test_parse_fps_fraction():
-    assert round(_parse_fps("30000/1001"), 2) == 29.97
+@pytest.mark.parametrize(("value", "expected"), [("60/1", 60), ("30000/1001", 30000 / 1001), ("24", 24)])
+def test_parse_fps(value, expected):
+    assert _parse_fps(value) == pytest.approx(expected)
 
 
-def test_parse_fps_plain_number():
-    assert _parse_fps("24") == 24.0
+@pytest.mark.parametrize("value", ["30/0", "invalid"])
+def test_parse_fps_rejects_invalid_rates(value):
+    with pytest.raises(ValueError):
+        _parse_fps(value)
 
 
-def test_parse_fps_zero_denominator():
-    try:
-        _parse_fps("30/0")
-    except ValueError as e:
-        assert str(e) == "frame rate denominator is zero"
-    else:
-        assert False, "Expected ValueError for zero denominator"
-
-
-def test_parse_fps_invalid_string():
-    try:
-        _parse_fps("invalid")
-    except ValueError:
-        pass  # Expected exception
-    else:
-        assert False, "Expected ValueError for invalid string"
-
-
-# --- probe_video() ---
+def test_probe_uses_nominal_rate_if_average_is_unavailable(tmp_path):
+    payload = {"streams": [{"codec_type": "video", "codec_name": "h264", "width": 640,
+                             "height": 360, "avg_frame_rate": "0/0", "r_frame_rate": "30000/1001"}],
+               "format": {"duration": "3"}}
+    with patch("gifmaker.video.probe.subprocess.run") as run:
+        run.return_value.returncode = 0
+        run.return_value.stdout = json.dumps(payload)
+        assert probe_video(tmp_path / "clip.mp4").fps == pytest.approx(30000 / 1001)
+        payload["streams"][0]["r_frame_rate"] = "0/0"
+        run.return_value.stdout = json.dumps(payload)
+        with pytest.raises(VideoProbeError):
+            probe_video(tmp_path / "clip.mp4")

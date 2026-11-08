@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 from loguru import logger
 from PySide6.QtCore import QSize, Qt, QTimer
@@ -16,6 +17,12 @@ class PreviewController:
         self.window = window
         self.preview_label = None
         self._playback_speed = 1.0
+        self._deadline = 0.0
+        self._remaining_ms = None
+
+    def _start_frame_timer(self, delay_ms: float) -> None:
+        self._deadline = time.monotonic() + delay_ms / 1000
+        self.window._preview_frame_timer.start(max(1, round(delay_ms)))
 
     def bind(self, preview_label) -> None:
         """Attach the label that renders the generated preview."""
@@ -44,9 +51,9 @@ class PreviewController:
         self._playback_speed = speed
         if self.window._preview_frame_cache and self.window._preview_frame_timer is not None:
             if self.window._preview_frame_timer.isActive():
-                self.window._preview_frame_timer.start(
-                    self._frame_delay(self.window._preview_frame_index)
-                )
+                self._start_frame_timer(self._frame_delay(self.window._preview_frame_index))
+            else:
+                self._remaining_ms = None
             return
         movie = self.window._preview_movie
         if movie is not None:
@@ -57,18 +64,21 @@ class PreviewController:
         if self.window._preview_frame_cache:
             if self.window._preview_frame_timer is None:
                 self.window._preview_frame_timer = QTimer(self.window)
+                self.window._preview_frame_timer.setSingleShot(True)
+                self.window._preview_frame_timer.setTimerType(Qt.TimerType.PreciseTimer)
                 self.window._preview_frame_timer.timeout.connect(
                     self.window._on_cached_frame_timeout
                 )
                 idx = self.window._preview_frame_index or 0
                 dur = self._frame_delay(idx)
-                self.window._preview_frame_timer.start(dur)
+                self._start_frame_timer(dur)
                 return
 
             if not self.window._preview_frame_timer.isActive():
                 idx = self.window._preview_frame_index or 0
                 dur = self._frame_delay(idx)
-                self.window._preview_frame_timer.start(dur)
+                self._start_frame_timer(self._remaining_ms if self._remaining_ms is not None else dur)
+                self._remaining_ms = None
             return
 
         movie = self.window._preview_movie
@@ -88,6 +98,8 @@ class PreviewController:
             and self.window._preview_frame_timer is not None
         ):
             try:
+                if self.window._preview_frame_timer.isActive():
+                    self._remaining_ms = max(1, (self._deadline - time.monotonic()) * 1000)
                 self.window._preview_frame_timer.stop()
             except Exception:
                 pass
@@ -143,6 +155,8 @@ class PreviewController:
         self.window._preview_frame_cache = None
         self.window._preview_frame_durations = None
         self.window._preview_frame_index = 0
+        self._remaining_ms = None
+        self._deadline = 0.0
 
     def set_movie(self, preview_path: Path) -> None:
         """Display a generated GIF or animated WebP in the preview panel."""
@@ -226,12 +240,12 @@ class PreviewController:
             if self.preview_label is not None:
                 self.preview_label.setPixmap(self.window._preview_frame_cache[0])
             self.window._preview_frame_timer = QTimer(self.window)
+            self.window._preview_frame_timer.setSingleShot(True)
+            self.window._preview_frame_timer.setTimerType(Qt.TimerType.PreciseTimer)
             self.window._preview_frame_timer.timeout.connect(
                 self.window._on_cached_frame_timeout
             )
-            self.window._preview_frame_timer.start(
-                self._frame_delay(0)
-            )
+            self._start_frame_timer(self._frame_delay(0))
             try:
                 movie.stop()
             except Exception:
@@ -292,15 +306,25 @@ class PreviewController:
         ):
             return
 
-        self.window._preview_frame_index = (self.window._preview_frame_index + 1) % len(
-            self.window._preview_frame_cache
-        )
+        now = time.monotonic()
+        if not self._deadline:
+            self._deadline = now
+        # Skip frames when the event loop is late, preserving elapsed time.
+        cycle = sum(self._frame_delay(i) for i in range(len(self.window._preview_frame_cache))) / 1000
+        if cycle and now - self._deadline >= cycle:
+            self._deadline += int((now - self._deadline) / cycle) * cycle
+        while True:
+            self.window._preview_frame_index = (self.window._preview_frame_index + 1) % len(
+                self.window._preview_frame_cache
+            )
+            self._deadline += self._frame_delay(self.window._preview_frame_index) / 1000
+            if self._deadline > now:
+                break
         pix = self.window._preview_frame_cache[self.window._preview_frame_index]
         if self.preview_label is not None:
             self.preview_label.setPixmap(pix)
         if self.window._preview_frame_timer is not None:
-            next_dur = self._frame_delay(self.window._preview_frame_index)
-            self.window._preview_frame_timer.start(next_dur)
+            self.window._preview_frame_timer.start(max(1, round((self._deadline - now) * 1000)))
 
     def on_preview_frame_changed(self, frame: int) -> None:
         """Loop a QMovie smoothly when it reaches the end frame."""

@@ -55,12 +55,14 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         codec = str(video_stream["codec_name"])
         width = int(video_stream["width"])
         height = int(video_stream["height"])
-        fps_raw = str(
-            video_stream.get("avg_frame_rate")
-            or video_stream.get("r_frame_rate")
-            or "0/0"
-        )
-        fps = _parse_fps(fps_raw)
+        fps = 0.0
+        for field in ("avg_frame_rate", "r_frame_rate"):
+            try:
+                fps = _parse_fps(str(video_stream.get(field) or "0/0"))
+            except ValueError:
+                continue
+            if fps > 0:
+                break
 
         duration = float(payload["format"]["duration"])
     except (KeyError, StopIteration, TypeError, ValueError) as exc:

@@ -28,6 +28,8 @@ Select the start and end of a clip, adjust the output settings, and choose **Gen
 
 The padlock at the bottom left controls preview updates; press **L** to toggle it from the keyboard. An open lock means live updates are enabled. A closed, coloured lock means the preview is locked: adjust as many settings or crop selections as you like, and the displayed animation keeps playing with its previous settings. Press **Generate Preview** to apply the current settings once; the lock stays closed. Alternatively, unlock it to apply pending changes and resume live updates. Locking before the first preview lets you work entirely with manual generation. The output summary still reflects the current controls, and Export uses the current settings even if the preview is out of date.
 
+The output FPS controls animation cadence: FFmpeg drops or repeats source frames as needed, rather than creating new motion. Choosing a rate above the source FPS will not add detail. The timeline uses the source's average frame rate, so frame stepping and selection boundaries can be approximate for variable-frame-rate video.
+
 ## Keyboard-first editing
 
 GIF Maker has a vim-adjacent, keyboard-first workflow: single keys handle frequent editing actions, while Shift combinations open files and trigger larger actions. Use **File → Shortcuts** for the in-app reference, or **File → Documentation** to read this guide inside the app.
