@@ -15,7 +15,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from gifmaker.gui.main_window import MainWindow
-from gifmaker.services.gif_export import format_ffmpeg_error
+from gifmaker.services.gif_export import build_webp_command, format_ffmpeg_error
 
 
 def webp_ffmpeg() -> str | None:
@@ -102,3 +102,20 @@ def test_missing_webp_encoder_provides_setup_guidance() -> None:
     assert "GIFMAKER_FFMPEG" in message
     assert "Documentation" in message
     assert format_ffmpeg_error("invalid crop") == "invalid crop"
+
+
+def test_webp_quality_presets_produce_distinct_real_encodes(tmp_path, monkeypatch):
+    ffmpeg = webp_ffmpeg()
+    if ffmpeg is None:
+        pytest.skip("FFmpeg with libwebp_anim is required")
+    monkeypatch.setenv("GIFMAKER_FFMPEG", ffmpeg)
+    source = Path(__file__).parent / "fixtures" / "small_floor_landscape.mp4"
+    sizes = []
+    for preset in ("small", "balanced", "high"):
+        output = tmp_path / f"{preset}.webp"
+        subprocess.run(build_webp_command(source, output, start_seconds=1, end_seconds=2,
+                                          fps=24, width=320, height=180,
+                                          quality_preset=preset),
+                       check=True, capture_output=True)
+        sizes.append(output.stat().st_size)
+    assert sizes[0] < sizes[1] < sizes[2]

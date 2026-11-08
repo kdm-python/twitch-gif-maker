@@ -76,7 +76,11 @@ class ExportControlsPanel(QWidget):
         self.quality_preset_combo.addItem("Balanced", "balanced")
         self.quality_preset_combo.addItem("High quality", "high")
         self.quality_preset_combo.setCurrentIndex(
-            self.quality_preset_combo.findData("high")
+            self.quality_preset_combo.findData("balanced")
+        )
+        self.quality_preset_combo.setToolTip(
+            "WebP quality: Small reduces file size; Balanced favours detail at "
+            "a moderate size; High retains more detail and creates larger files."
         )
         self.quality_preset_combo.setFixedWidth(112)
         self.quality_label = QLabel("WebP quality")

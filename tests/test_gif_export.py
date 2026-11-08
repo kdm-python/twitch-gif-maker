@@ -283,7 +283,7 @@ def test_export_webp_builds_ffmpeg_command(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("preset", "quality"),
-    [("small", "50"), ("balanced", "90"), ("high", "100")],
+    [("small", "65"), ("balanced", "85"), ("high", "100")],
 )
 def test_webp_quality_presets_preserve_default_detail(
     tmp_path: Path, preset: str, quality: str
@@ -297,6 +297,7 @@ def test_webp_quality_presets_preserve_default_detail(
     )
 
     assert command[command.index("-quality") + 1] == quality
+    assert command[command.index("-preset") + 1] == "photo"
 
 
 def test_export_webp_uses_timestamp_adjustment_for_playback_speed(tmp_path: Path) -> None:

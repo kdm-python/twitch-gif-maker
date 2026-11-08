@@ -14,16 +14,15 @@ QUALITY_PRESETS: dict[str, dict[str, str | int]] = {
         "label": "Small file",
         "gif_colors": 128,
         "gif_dither": "bayer:bayer_scale=3",
-        "webp_quality": 50,
-        "webp_preset": "picture",
+        "webp_quality": 65,
+        "webp_preset": "photo",
     },
     "balanced": {
         "label": "Balanced",
         "gif_colors": 256,
         "gif_dither": "sierra2_4a",
-        # The original WebP export used 90. Dropping the default to 75 made
-        # block artifacts visible in otherwise smooth video backgrounds.
-        "webp_quality": 90,
+        # 85 retains more detail than 75 while saving space versus 90 or 100.
+        "webp_quality": 85,
         "webp_preset": "photo",
     },
     "high": {

@@ -3,6 +3,7 @@ Simple CLI script to test running a probe on an mp4 file.
 """
 
 import sys
+
 from gifmaker.video.probe import probe_video
 
 if __name__ == "__main__":

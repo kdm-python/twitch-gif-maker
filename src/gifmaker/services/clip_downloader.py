@@ -16,7 +16,12 @@ def validate_clip_url(url: str) -> str:
         parsed = urlsplit(url)
         host = (parsed.hostname or "").lower()
         # Reject credentials, unusual ports and non-Twitch URLs before yt-dlp sees them.
-        if parsed.scheme.lower() not in {"http", "https"} or parsed.username or parsed.password or parsed.port:
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or parsed.username
+            or parsed.password
+            or parsed.port
+        ):
             raise ValueError
         slug = r"[A-Za-z0-9_-]+"
         if host == "clips.twitch.tv":
@@ -38,7 +43,9 @@ def download_clip(url: str, output_dir: Path) -> Path:
         from yt_dlp import YoutubeDL
         from yt_dlp.utils import DownloadError
     except ImportError as exc:
-        raise ClipDownloadError("yt-dlp is not installed. Install the project dependencies.") from exc
+        raise ClipDownloadError(
+            "yt-dlp is not installed. Install the project dependencies."
+        ) from exc
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / "clip.mp4"

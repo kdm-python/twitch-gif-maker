@@ -6,12 +6,24 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QProcess, QSettings, Qt
 from PySide6.QtGui import QKeySequence
-from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QMessageBox, QSplitter, QTextBrowser
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QGroupBox,
+    QMessageBox,
+    QSplitter,
+    QTextBrowser,
+)
 
+from gifmaker.controllers.render_controller import _RenderProcessJob
 from gifmaker.gui.main_window import MainWindow
 from gifmaker.gui.shortcut_manager import ShortcutManager
-from gifmaker.controllers.render_controller import _RenderProcessJob
-from gifmaker.models.render_settings import RenderSettings, RenderSpec, format_ms, parse_time_input
+from gifmaker.models.render_settings import (
+    RenderSettings,
+    RenderSpec,
+    format_ms,
+    parse_time_input,
+)
 
 
 def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
@@ -79,9 +91,15 @@ def test_dropped_mp4_uses_the_existing_video_loading_path(tmp_path: Path) -> Non
     source.write_bytes(b"video")
     video_info = object()
 
-    with patch("gifmaker.controllers.video_session_controller.probe_video", return_value=video_info), patch.object(
-        window.video_session_controller, "load_video_preview"
-    ) as load_preview:
+    with (
+        patch(
+            "gifmaker.controllers.video_session_controller.probe_video",
+            return_value=video_info,
+        ),
+        patch.object(
+            window.video_session_controller, "load_video_preview"
+        ) as load_preview,
+    ):
         window.open_dropped_video(str(source))
 
     assert window.current_video_path == str(source)
@@ -181,8 +199,11 @@ def test_reset_preview_crop_restores_source_aspect_for_preview_and_export(
     window.gif_preview_label.set_video_size(1920, 1080)
     window.gif_preview_label.set_coordinate_space(window._current_crop)
 
-    with patch.object(window.render_controller.render_service, "build_command") as build_mock, patch.object(
-        window.render_controller, "_start_process"
+    with (
+        patch.object(
+            window.render_controller.render_service, "build_command"
+        ) as build_mock,
+        patch.object(window.render_controller, "_start_process"),
     ):
         window.reset_preview_crop()
 
@@ -216,8 +237,12 @@ def test_shortcut_manager_registers_expected_key_bindings() -> None:
     assert manager.shortcuts["export_file"].key() == QKeySequence("Shift+E")
     assert manager.shortcuts["apply_crop"].key() == QKeySequence(Qt.Key.Key_A)
     assert manager.shortcuts["reset_crop"].key() == QKeySequence(Qt.Key.Key_R)
-    assert manager.shortcuts["output_speed_down"].key() == QKeySequence(Qt.Key.Key_BracketLeft)
-    assert manager.shortcuts["output_speed_up"].key() == QKeySequence(Qt.Key.Key_BracketRight)
+    assert manager.shortcuts["output_speed_down"].key() == QKeySequence(
+        Qt.Key.Key_BracketLeft
+    )
+    assert manager.shortcuts["output_speed_up"].key() == QKeySequence(
+        Qt.Key.Key_BracketRight
+    )
     assert manager.shortcuts["output_speed_down"].autoRepeat()
 
     app.quit()
@@ -285,11 +310,15 @@ def test_documentation_menu_renders_readme_in_scrollable_dialog() -> None:
 def test_documentation_reports_unavailable_readme() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
-    with patch("gifmaker.gui.main_window.load_documentation", side_effect=OSError("unavailable")):
+    with patch(
+        "gifmaker.gui.main_window.load_documentation",
+        side_effect=OSError("unavailable"),
+    ):
         dialog = window.show_documentation_dialog()
-    assert "Unable to load documentation: unavailable" in dialog.findChild(
-        QTextBrowser, "documentation_browser"
-    ).toPlainText()
+    assert (
+        "Unable to load documentation: unavailable"
+        in dialog.findChild(QTextBrowser, "documentation_browser").toPlainText()
+    )
     dialog.close()
     app.quit()
 
@@ -301,8 +330,12 @@ def test_documentation_uses_installed_distribution_description(tmp_path: Path) -
 
     distribution = Message()
     distribution.set_payload("# Installed guide\n\nPreview workflow")
-    with patch("gifmaker.gui.main_window.__file__", str(tmp_path / "site" / "gifmaker" / "gui" / "main_window.py")), patch(
-        "gifmaker.gui.main_window.metadata", return_value=distribution
+    with (
+        patch(
+            "gifmaker.gui.main_window.__file__",
+            str(tmp_path / "site" / "gifmaker" / "gui" / "main_window.py"),
+        ),
+        patch("gifmaker.gui.main_window.metadata", return_value=distribution),
     ):
         assert "Installed guide" in load_documentation()
 
@@ -363,7 +396,9 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.preview_panel.playback_speed_combo.itemText(4) == "2×"
     assert window.preview_panel.selection_group.title() == "Selection"
     assert window.preview_panel.selection_group.maximumHeight() <= 64
-    assert window.preview_panel.selection_group.parentWidget() is window.preview_splitter
+    assert (
+        window.preview_panel.selection_group.parentWidget() is window.preview_splitter
+    )
     assert window.clip_selection_label.text() == "Selection: Not selected"
     assert window.mute_button.text() == ""
     assert window.mute_button.toolTip() == "Mute video audio"
@@ -374,7 +409,7 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.output_fps_combo.currentData() == 24
     assert window.aspect_ratio_lock.isChecked()
     assert window.export_format_combo.currentText() == "WebP"
-    assert window.quality_preset_combo.currentData() == "high"
+    assert window.quality_preset_combo.currentData() == "balanced"
     assert window.sharpness_combo.currentData() == "mild"
     assert not window.quality_preset_combo.isHidden()
 
@@ -399,12 +434,14 @@ def test_quality_control_is_webp_only_and_gif_uses_its_fixed_palette() -> None:
     window.current_video_path = "input.mp4"
     window.clip_start_time = 0.0
     window.clip_end_time = 1.0
-    assert window.render_controller._resolve_render_settings().quality_preset == "high"
+    assert window.render_controller._resolve_render_settings().quality_preset == "balanced"
     assert not window.quality_preset_combo.isHidden()
 
     window.export_format_combo.setCurrentText("GIF")
     assert window.quality_preset_combo.isHidden()
-    assert window.render_controller._resolve_render_settings().quality_preset == "balanced"
+    assert (
+        window.render_controller._resolve_render_settings().quality_preset == "balanced"
+    )
     app.quit()
 
 
@@ -475,8 +512,11 @@ def test_generate_preview_keeps_the_active_crop(tmp_path: Path) -> None:
     window.clip_end_time = 1.0
     window._current_crop = (10, 20, 100, 80)
 
-    with patch.object(window.render_controller.render_service, "build_command") as build_mock, patch.object(
-        window.render_controller, "_start_process"
+    with (
+        patch.object(
+            window.render_controller.render_service, "build_command"
+        ) as build_mock,
+        patch.object(window.render_controller, "_start_process"),
     ):
         window.render_controller.generate_gif_preview()
 
@@ -521,7 +561,9 @@ def test_stale_preview_process_result_is_discarded(tmp_path: Path) -> None:
     app.quit()
 
 
-def test_render_change_debounces_a_refresh_when_a_preview_exists(tmp_path: Path) -> None:
+def test_render_change_debounces_a_refresh_when_a_preview_exists(
+    tmp_path: Path,
+) -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     source = str(tmp_path / "input.mp4")
@@ -532,14 +574,18 @@ def test_render_change_debounces_a_refresh_when_a_preview_exists(tmp_path: Path)
         source, "GIF", RenderSettings(start_seconds=0.0, end_seconds=1.0)
     )
 
-    with patch.object(window.render_controller, "_schedule_preview_refresh") as schedule:
+    with patch.object(
+        window.render_controller, "_schedule_preview_refresh"
+    ) as schedule:
         window.render_controller.on_render_setting_changed()
 
     schedule.assert_called_once_with()
     app.quit()
 
 
-def test_locked_preview_defers_edits_and_unlock_renders_latest_settings(tmp_path: Path) -> None:
+def test_locked_preview_defers_edits_and_unlock_renders_latest_settings(
+    tmp_path: Path,
+) -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     window.current_video_path = str(tmp_path / "input.mp4")
@@ -549,9 +595,10 @@ def test_locked_preview_defers_edits_and_unlock_renders_latest_settings(tmp_path
     window._last_preview_settings = window._last_preview_spec.settings
     window.preview_lock_button.click()
 
-    with patch.object(controller, "_schedule_preview_refresh") as schedule, patch.object(
-        controller, "generate_gif_preview"
-    ) as generate:
+    with (
+        patch.object(controller, "_schedule_preview_refresh") as schedule,
+        patch.object(controller, "generate_gif_preview") as generate,
+    ):
         window.output_speed_slider.setValue(150)
         assert controller.preview_locked
         assert window.preview_controller._preview_speed() == 1.0
@@ -576,14 +623,19 @@ def test_locked_generate_and_crop_actions_do_not_unlock(tmp_path: Path) -> None:
         controller.apply_crop_to_preview()
         controller.reset_preview_crop()
         generate.assert_not_called()
-    with patch.object(controller.render_service, "build_command"), patch.object(controller, "_start_process"):
+    with (
+        patch.object(controller.render_service, "build_command"),
+        patch.object(controller, "_start_process"),
+    ):
         controller.generate_gif_preview()
     assert controller.preview_locked
     assert window.preview_lock_button.isChecked()
     app.quit()
 
 
-def test_preview_lock_cancels_pending_refresh_and_shortcut_does_not_repeat(tmp_path: Path) -> None:
+def test_preview_lock_cancels_pending_refresh_and_shortcut_does_not_repeat(
+    tmp_path: Path,
+) -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     window.current_video_path = str(tmp_path / "input.mp4")
@@ -601,7 +653,9 @@ def test_preview_lock_cancels_pending_refresh_and_shortcut_does_not_repeat(tmp_p
     app.quit()
 
 
-def test_unlock_without_first_preview_or_pending_changes_does_not_render(tmp_path: Path) -> None:
+def test_unlock_without_first_preview_or_pending_changes_does_not_render(
+    tmp_path: Path,
+) -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     window.current_video_path = str(tmp_path / "input.mp4")
@@ -627,7 +681,9 @@ def test_edit_during_first_locked_render_is_applied_on_unlock(tmp_path: Path) ->
     destination = tmp_path / "pending.gif"
     destination.write_bytes(b"partial")
     controller._preview_job = _RenderProcessJob(
-        QProcess(window), controller._resolve_render_spec(output_format="GIF"), destination
+        QProcess(window),
+        controller._resolve_render_spec(output_format="GIF"),
+        destination,
     )
     window.output_speed_slider.setValue(150)
     assert controller._preview_job is None
