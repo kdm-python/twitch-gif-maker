@@ -20,17 +20,17 @@ Keyboard mappings:
 - File management
     - Shift+O: Open a video file
     - Shift+E: Export the GIF
-- GIF preview controls
-    - Shift+G: Generate a GIF preview
-    - a: Apply the current crop to the GIF preview
-    - r: Reset the crop on the GIF preview
+- Output preview controls
+    - Shift+G: Generate an output preview
+    - a: Apply the current crop to the output preview
+    - r: Reset the crop on the output preview
     - [: Decrease output speed
     - ]: Increase output speed
 - Work mode
     - l: Toggle live update or static mode
 
-Live mode: automatically apply changes to the GIF preview as you adjust settings.
-Static mode: will only apply changes when you explicitly generate the GIF preview.
+Live mode: automatically apply changes to the output preview as you adjust settings.
+Static mode: will only apply changes when you explicitly generate the output preview.
 
 """
 
@@ -80,11 +80,11 @@ SHORTCUT_HELP: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         ),
     ),
     (
-        "GIF preview controls",
+        "Output preview controls",
         (
-            ("Shift+G", "Generate a GIF preview"),
-            ("A", "Apply the current crop to the GIF preview"),
-            ("R", "Reset the crop on the GIF preview"),
+            ("Shift+G", "Generate an output preview"),
+            ("A", "Apply the current crop to the output preview"),
+            ("R", "Reset the crop on the output preview"),
             ("[", "Decrease output speed"),
             ("]", "Increase output speed"),
         ),

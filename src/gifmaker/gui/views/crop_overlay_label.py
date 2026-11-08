@@ -1,4 +1,4 @@
-"""Crop overlay widget for the GIF preview panel."""
+"""Crop overlay widget for the output preview panel."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _HANDLE_SIZE = 6
 
 
 class CropOverlayLabel(QLabel):
-    """Drop-in QLabel replacement that draws an arbitrary-rectangle crop overlay over the GIF preview."""
+    """QLabel that draws an arbitrary-rectangle crop overlay over the preview."""
 
     cropChanged = Signal(int, int, int, int)  # x, y, w, h in source-video pixels
     cropCleared = Signal()

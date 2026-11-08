@@ -53,6 +53,18 @@ class GifExportError(Exception):
     """Raised when GIF export validation or FFmpeg execution fails."""
 
 
+def format_ffmpeg_error(stderr: str) -> str:
+    """Make a missing WebP encoder actionable without masking other errors."""
+    if "libwebp_anim" in stderr and (
+        "Unknown encoder" in stderr or "not recognized" in stderr
+        or "Encoder not found" in stderr
+    ):
+        logger.error("FFmpeg WebP encoder error: {}", stderr)
+        return ("FFmpeg lacks libwebp_anim. Set GIFMAKER_FFMPEG to a WebP-capable "
+                "FFmpeg executable; see File → Documentation.")
+    return stderr
+
+
 def _validate_render_request(
     input_path: str | Path,
     output_path: str | Path,
@@ -264,5 +276,5 @@ def _run_export(command: list[str]) -> None:
         raise GifExportError(f"Failed to execute ffmpeg: {exc}") from exc
     if result.returncode != 0:
         stderr = result.stderr.strip() or "unknown ffmpeg error"
-        raise GifExportError(f"ffmpeg export failed: {stderr}")
+        raise GifExportError(f"ffmpeg export failed: {format_ffmpeg_error(stderr)}")
     logger.info("Export completed: {}", command[-1])

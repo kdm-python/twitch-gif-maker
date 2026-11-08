@@ -2,6 +2,15 @@
 
 Install the project and its dependencies with `poetry install`. The application also requires `ffmpeg` and `ffprobe` on your PATH.
 
+WebP previews and exports require an FFmpeg build with the `libwebp_anim` encoder. Check it with `ffmpeg -hide_banner -encoders | grep libwebp_anim`. If your usual FFmpeg lacks it, install a build with libwebp support; on macOS with Homebrew, `brew install ffmpeg-full` is one option. Tell GIF Maker which executable to use before launching it:
+
+```sh
+export GIFMAKER_FFMPEG="$(brew --prefix ffmpeg-full)/bin/ffmpeg"
+poetry run gifmaker
+```
+
+Add the `export` line to your shell's startup file (such as `~/.zshrc`) to keep it for future terminal sessions. `ffprobe` must still be available on PATH. The variable affects GIF Maker, not other programs. Verify your chosen executable with `"$GIFMAKER_FFMPEG" -hide_banner -encoders | grep libwebp_anim`.
+
 Run `poetry run gifmaker`, or use the installed `gifmaker` command when the Poetry environment is on your PATH:
 
 ```sh
@@ -15,9 +24,9 @@ Inside the application, choose **Open Video File** or **Open Twitch Clip**. Thei
 
 ## Preview workflow
 
-Select the start and end of a clip, adjust the output settings, and choose **Generate Preview** (or **Shift+G**). The GIF preview is separate from the source video player. After the first preview, changes to the selection and output settings update the GIF preview automatically.
+Select the start and end of a clip, adjust the output settings, and choose **Generate Preview** (or **Shift+G**). The output preview is separate from the source video player and uses the selected WebP or GIF format and its render settings, including WebP quality. After the first preview, changes to the selection and output settings update it automatically. Export reuses an identical current preview; otherwise it renders the current settings.
 
-The padlock at the bottom left controls preview updates; press **L** to toggle it from the keyboard. An open lock means live updates are enabled. A closed, coloured lock means the preview is locked: adjust as many settings or crop selections as you like, and the displayed GIF keeps playing with its previous settings. Press **Generate Preview** to apply the current settings once; the lock stays closed. Alternatively, unlock it to apply pending changes and resume live updates. Locking before the first preview lets you work entirely with manual generation. The output summary still reflects the current controls, and Export uses the current settings even if the preview is out of date.
+The padlock at the bottom left controls preview updates; press **L** to toggle it from the keyboard. An open lock means live updates are enabled. A closed, coloured lock means the preview is locked: adjust as many settings or crop selections as you like, and the displayed animation keeps playing with its previous settings. Press **Generate Preview** to apply the current settings once; the lock stays closed. Alternatively, unlock it to apply pending changes and resume live updates. Locking before the first preview lets you work entirely with manual generation. The output summary still reflects the current controls, and Export uses the current settings even if the preview is out of date.
 
 ## Keyboard-first editing
 
@@ -32,8 +41,8 @@ GIF Maker has a vim-adjacent, keyboard-first workflow: single keys handle freque
 | V / B / N | Set the end to the current frame / nudge it backward / forward |
 | A / R | Apply / reset the crop (in locked mode, generate the preview to see it) |
 | [ / ] | Decrease / increase output speed |
-| L | Lock / unlock live GIF preview updates |
-| Shift+G | Generate the GIF preview |
+| L | Lock / unlock live preview updates |
+| Shift+G | Generate the output preview |
 | Shift+O / Shift+L | Open a video file / Twitch clip |
 | Shift+E | Export GIF or WebP |
 

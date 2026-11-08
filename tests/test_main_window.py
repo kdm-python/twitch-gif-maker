@@ -258,7 +258,7 @@ def test_file_menu_contains_shortcuts_action_and_opens_reference_dialog() -> Non
         "Video player",
         "Start and end frame controls",
         "File management",
-        "GIF preview controls",
+        "Output preview controls",
         "Work mode",
     ]
     dialog.close()
@@ -545,7 +545,7 @@ def test_locked_preview_defers_edits_and_unlock_renders_latest_settings(tmp_path
     window.current_video_path = str(tmp_path / "input.mp4")
     window.clip_start_time, window.clip_end_time = 0.0, 1.0
     controller = window.render_controller
-    window._last_preview_spec = controller._resolve_render_spec(output_format="GIF")
+    window._last_preview_spec = controller._resolve_render_spec()
     window._last_preview_settings = window._last_preview_spec.settings
     window.preview_lock_button.click()
 
@@ -610,7 +610,7 @@ def test_unlock_without_first_preview_or_pending_changes_does_not_render(tmp_pat
         window.preview_lock_button.click()
         window.preview_lock_button.click()
         generate.assert_not_called()
-        window._last_preview_spec = window.render_controller._resolve_render_spec(output_format="GIF")
+        window._last_preview_spec = window.render_controller._resolve_render_spec()
         window.preview_lock_button.click()
         window.preview_lock_button.click()
         generate.assert_not_called()

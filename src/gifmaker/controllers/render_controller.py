@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QFileDialog
 
 from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.render_estimate import calculate_render_estimate, format_file_size
-from gifmaker.services.gif_export import GifExportError
+from gifmaker.services.gif_export import GifExportError, format_ffmpeg_error
 from gifmaker.services.render_service import RenderService
 
 
@@ -91,7 +91,7 @@ class RenderController:
         self.on_render_setting_changed()
 
     def on_output_speed_changed(self, value: int) -> None:
-        """Update output-speed feedback and apply it to the live GIF preview."""
+        """Update output-speed feedback and apply it to the live preview."""
         speed = value / 100
         self.window.output_speed_value_label.setText(f"{speed:g}×")
         if not self.preview_locked:
@@ -131,7 +131,7 @@ class RenderController:
         if self.window._last_preview_spec is None and not had_pending:
             return
         try:
-            current = self._resolve_render_spec(output_format="GIF")
+            current = self._resolve_render_spec()
         except ValueError:
             return
         if current != self.window._last_preview_spec:
@@ -164,7 +164,7 @@ class RenderController:
         if window._last_preview_spec is None:
             return
         try:
-            current = self._resolve_render_spec(output_format="GIF")
+            current = self._resolve_render_spec()
         except ValueError:
             return
         if current != window._last_preview_spec:
@@ -279,7 +279,7 @@ class RenderController:
         self._export_source(Path(output_path), spec)
 
     def _preview_matches(self, spec: RenderSpec) -> bool:
-        """Return whether the saved preview is the requested GIF output."""
+        """Return whether the saved preview is exactly the requested output."""
         window = self.window
         return bool(
             window._preview_temp_file
@@ -319,21 +319,20 @@ class RenderController:
         )
 
     def generate_gif_preview(self) -> None:
-        """Render a temporary GIF preview for the current selection and crop."""
+        """Render a temporary preview in the selected output format."""
         window = self.window
         self._preview_debounce.stop()
         if window.current_video_path is None:
             window.export_status_label.setText("Status: Load a video first.")
             return
         try:
-            # The current preview implementation is GIF-only.  Pinning its
-            # format in the spec prevents a WebP export from ever copying it.
-            spec = self._resolve_render_spec(output_format="GIF")
+            spec = self._resolve_render_spec()
         except ValueError as exc:
             window.export_status_label.setText(f"Status: {exc}")
             return
 
-        descriptor, temporary_name = tempfile.mkstemp(prefix="gifmaker-preview-", suffix=".gif")
+        suffix = ".webp" if spec.output_format == "WebP" else ".gif"
+        descriptor, temporary_name = tempfile.mkstemp(prefix="gifmaker-preview-", suffix=suffix)
         os.close(descriptor)
         temporary_file = Path(temporary_name)
         self._cancel_preview_job()
@@ -403,6 +402,7 @@ class RenderController:
             self.remove_temp_file_if_exists(job.destination)
             if is_current_job and exit_code != 0:
                 message = bytes(job.process.readAllStandardError()).decode(errors="replace").strip()
+                message = format_ffmpeg_error(message)
                 self.window.export_status_label.setText(
                     f"Status: Preview failed: {message or 'ffmpeg exited unsuccessfully'}"
                 )
@@ -441,6 +441,7 @@ class RenderController:
             logger.info("{} export completed: {}", job.spec.output_format, job.destination)
             return
         message = bytes(job.process.readAllStandardError()).decode(errors="replace").strip()
+        message = format_ffmpeg_error(message)
         self.window.export_status_label.setText(
             f"Status: Export failed: {message or 'ffmpeg exited unsuccessfully'}"
         )

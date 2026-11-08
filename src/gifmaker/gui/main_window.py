@@ -335,10 +335,10 @@ class MainWindow(QMainWindow):
 
     def create_gif_preview_panel(self) -> QGroupBox:
         """Create the crop-enabled generated-animation preview view."""
-        group = QGroupBox("GIF Preview")
+        group = QGroupBox("Output Preview")
         group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         layout = QVBoxLayout(group)
-        self.gif_preview_label = CropOverlayLabel("Generate preview to display GIF")
+        self.gif_preview_label = CropOverlayLabel("Generate preview to display animation")
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
         self.gif_preview_label.setMinimumHeight(180)
         self.gif_preview_label.setSizePolicy(

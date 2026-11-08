@@ -1,4 +1,4 @@
-"""Helpers for GIF preview generation, caching, and playback."""
+"""Helpers for output preview generation, caching, and playback."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QMovie, QPixmap
+from PySide6.QtGui import QImageReader, QMovie, QPixmap
 
 
 class PreviewController:
-    """Own the preview GIF lifecycle and its timer-based playback."""
+    """Own the preview animation lifecycle and its timer-based playback."""
 
     def __init__(self, window) -> None:
         self.window = window
@@ -53,7 +53,7 @@ class PreviewController:
             movie.setSpeed(round(100 * speed / self._rendered_speed()))
 
     def play(self) -> None:
-        """Play the generated GIF preview."""
+        """Play the generated output preview."""
         if self.window._preview_frame_cache:
             if self.window._preview_frame_timer is None:
                 self.window._preview_frame_timer = QTimer(self.window)
@@ -82,7 +82,7 @@ class PreviewController:
         movie.setPaused(False)
 
     def pause(self) -> None:
-        """Pause the generated GIF preview."""
+        """Pause the generated output preview."""
         if (
             self.window._preview_frame_cache
             and self.window._preview_frame_timer is not None
@@ -100,7 +100,7 @@ class PreviewController:
         movie.setPaused(True)
 
     def clear(self, *, remove_temp_file: bool) -> None:
-        """Clear preview UI state and optionally remove the temp GIF file."""
+        """Clear preview UI state and optionally remove the temporary file."""
         preview_file = self.window._preview_temp_file
         try:
             self.stop_cached_preview()
@@ -118,7 +118,7 @@ class PreviewController:
 
         if self.preview_label is not None:
             self.preview_label.clear()
-            self.preview_label.setText("Generate preview to display GIF")
+            self.preview_label.setText("Generate preview to display animation")
 
         self.window._preview_temp_file = None
         self.window._last_preview_settings = None
@@ -144,11 +144,11 @@ class PreviewController:
         self.window._preview_frame_durations = None
         self.window._preview_frame_index = 0
 
-    def set_movie(self, gif_path: Path) -> None:
-        """Display a generated GIF in the preview panel."""
-        movie = QMovie(str(gif_path))
+    def set_movie(self, preview_path: Path) -> None:
+        """Display a generated GIF or animated WebP in the preview panel."""
+        movie = QMovie(str(preview_path))
         if not movie.isValid():
-            raise RuntimeError("Generated preview GIF could not be loaded")
+            raise RuntimeError("Generated preview could not be loaded")
 
         if self.window._preview_movie is not None:
             self.window._preview_movie.stop()
@@ -178,18 +178,20 @@ class PreviewController:
 
         cached_frames: list[QPixmap] = []
         cached_durations: list[int] = []
+        # QMovie.nextFrameDelay() subtracts decoding time. QImageReader returns
+        # the encoded frame delay, which matters when caching animated WebP.
+        reader = QImageReader(str(preview_path))
         try:
             total = movie.frameCount()
         except Exception:
             total = 0
 
         if total and total > 0:
-            for i in range(total):
-                try:
-                    movie.jumpToFrame(i)
-                except Exception:
+            for _ in range(total):
+                frame = reader.read()
+                if frame.isNull():
                     break
-                pix = movie.currentPixmap()
+                pix = QPixmap.fromImage(frame)
                 if pix is None or pix.isNull():
                     continue
 
@@ -213,10 +215,7 @@ class PreviewController:
                             )
 
                 cached_frames.append(pix)
-                try:
-                    dur = movie.nextFrameDelay()
-                except Exception:
-                    dur = 100
+                dur = reader.nextImageDelay()
                 cached_durations.append(max(1, int(dur)))
 
         if len(cached_frames) > 1:
@@ -247,6 +246,8 @@ class PreviewController:
                 )
         except Exception:
             pass
+
+        self.stop_cached_preview()
 
         movie.frameChanged.connect(self.window._on_preview_frame_changed)
         if self.preview_label is not None:
