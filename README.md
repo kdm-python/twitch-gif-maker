@@ -32,6 +32,8 @@ The output FPS controls animation cadence: FFmpeg drops or repeats source frames
 
 For WebP, **Balanced** is the default quality and aims for a useful compromise between detail and size. **Small file** trades some detail for a smaller file; **High quality** retains more detail at a larger size. All three use lossy WebP encoding. Compare them in the output preview at the intended display size: the effect depends on the clip's texture and motion. These choices do not affect GIF output.
 
+The output summary shows a rough size estimate until a preview matches the current settings. It then shows the measured preview file size; hover over the summary for the exact byte count. Changing settings while locked returns the summary to an estimate until the preview is updated. Estimates can be substantially different from the final size because video content affects compression.
+
 ## Keyboard-first editing
 
 GIF Maker has a vim-adjacent, keyboard-first workflow: single keys handle frequent editing actions, while Shift combinations open files and trigger larger actions. Use **File → Shortcuts** for the in-app reference, or **File → Documentation** to read this guide inside the app.

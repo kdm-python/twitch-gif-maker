@@ -229,10 +229,11 @@ class RenderController:
         self.on_render_setting_changed()
 
     def update_output_summary(self, *_args) -> None:
-        """Show live output dimensions, duration, frames, and estimated size."""
+        """Show current output facts and a measured or approximate file size."""
         window = self.window
         if window.clip_start_time is None or window.clip_end_time is None:
             window.output_summary_label.setText("Output: Select a clip range")
+            window.output_summary_label.setToolTip("")
             return
         settings = self._resolve_render_settings()
         estimate = calculate_render_estimate(
@@ -245,10 +246,22 @@ class RenderController:
             quality_preset=settings.quality_preset,
             sharpness_preset=settings.sharpness_preset,
         )
+        size_text = f"Estimated ~{format_file_size(estimate.estimated_bytes)}"
+        tooltip = ("Rough estimate: actual size depends on the video content. "
+                   "Generate a preview for the measured file size.")
+        try:
+            spec = self._resolve_render_spec()
+            if self._preview_matches(spec):
+                size = window._preview_temp_file.stat().st_size
+                size_text = f"Preview {format_file_size(size)}"
+                tooltip = f"Matching preview: {size:,} bytes. Export will reuse this file."
+        except (OSError, ValueError):
+            pass
         window.output_summary_label.setText(
             f"Output: {settings.width}×{settings.height} · {estimate.frame_count} frames · "
-            f"{estimate.duration_seconds:.2f}s · ~{format_file_size(estimate.estimated_bytes)}"
+            f"{estimate.duration_seconds:.2f}s · {size_text}"
         )
+        window.output_summary_label.setToolTip(tooltip)
 
     def export_gif_from_selection(self) -> None:
         """Prompt for a target file and export the current selection."""
@@ -429,6 +442,7 @@ class RenderController:
         window.gif_preview_label.set_coordinate_space(job.spec.settings.crop)
         if previous_file and previous_file != job.destination:
             self.remove_temp_file_if_exists(previous_file)
+        self.update_output_summary()
         window.export_status_label.setText("Status: Preview ready. Click Export to save.")
 
     def _on_export_finished(self, job: _RenderProcessJob, exit_code: int, _status) -> None:
@@ -515,6 +529,7 @@ class RenderController:
         self._refresh_after_unlock = False
         self._cancel_preview_job()
         self.window.preview_controller.clear(remove_temp_file=remove_temp_file)
+        self.update_output_summary()
 
     def cancel_active_renders(self) -> None:
         """Stop running FFmpeg processes during application shutdown."""
