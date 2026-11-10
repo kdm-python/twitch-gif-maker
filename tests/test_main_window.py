@@ -445,6 +445,35 @@ def test_quality_control_is_webp_only_and_gif_uses_its_fixed_palette() -> None:
     app.quit()
 
 
+def test_format_switch_preserves_shared_controls_and_webp_quality() -> None:
+    """Changing format must not reset the existing editing controls."""
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.output_speed_slider.setValue(150)
+    window.output_fps_combo.setCurrentIndex(window.output_fps_combo.findData(30))
+    window.quality_preset_combo.setCurrentIndex(window.quality_preset_combo.findData("high"))
+    window.sharpness_combo.setCurrentIndex(window.sharpness_combo.findData("strong"))
+    window.current_video_path = "input.mp4"
+    window.clip_start_time = 0.0
+    window.clip_end_time = 1.0
+
+    window.export_format_combo.setCurrentText("GIF")
+    gif = window.render_controller._resolve_render_settings()
+    assert (gif.playback_speed, gif.fps, gif.sharpness_preset, gif.quality_preset) == (
+        1.5, 30, "strong", "balanced"
+    )
+    assert window.quality_preset_combo.isHidden()
+
+    window.export_format_combo.setCurrentText("WebP")
+    webp = window.render_controller._resolve_render_settings()
+    assert (webp.playback_speed, webp.fps, webp.sharpness_preset, webp.quality_preset) == (
+        1.5, 30, "strong", "high"
+    )
+    assert not window.quality_preset_combo.isHidden()
+    window.close()
+    app.quit()
+
+
 def test_export_controls_keep_preview_playback_on_the_primary_row() -> None:
     """The duplicate time inputs are replaced by the GIF preview controls."""
     app = QApplication.instance() or QApplication([])
