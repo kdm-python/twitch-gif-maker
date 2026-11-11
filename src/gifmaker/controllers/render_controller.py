@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QFileDialog
 from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.render_estimate import calculate_render_estimate, format_file_size
 from gifmaker.services.gif_export import GifExportError, format_ffmpeg_error
+from gifmaker.services.output_formats import get_output_format
 from gifmaker.services.render_service import RenderService
 
 
@@ -270,7 +271,7 @@ class RenderController:
             window.export_status_label.setText("Status: Load a video first.")
             return
         fmt = window.export_format_combo.currentText()
-        suffix = ".webp" if fmt == "WebP" else ".gif"
+        suffix = get_output_format(fmt).suffix
         output_path, _ = QFileDialog.getSaveFileName(
             window,
             f"Save {fmt}",
@@ -344,7 +345,7 @@ class RenderController:
             window.export_status_label.setText(f"Status: {exc}")
             return
 
-        suffix = ".webp" if spec.output_format == "WebP" else ".gif"
+        suffix = get_output_format(spec.output_format).suffix
         descriptor, temporary_name = tempfile.mkstemp(prefix="gifmaker-preview-", suffix=suffix)
         os.close(descriptor)
         temporary_file = Path(temporary_name)
