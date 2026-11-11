@@ -19,6 +19,7 @@ class OutputFormat:
     name: str
     suffix: str
     build_command: Callable[[RenderSpec, str | Path], list[str]]
+    control_groups: frozenset[str] = frozenset()
 
 
 def _animation_command(builder, spec: RenderSpec, destination: str | Path) -> list[str]:
@@ -40,10 +41,12 @@ def _webp(spec: RenderSpec, destination: str | Path) -> list[str]:
     return _animation_command(build_webp_command, spec, destination)
 
 
+_VISUAL_GROUPS = frozenset({"fps", "size", "sharpness", "crop"})
+
 _FORMATS = {
     item.name: item for item in (
-        OutputFormat("WebP", ".webp", _webp),
-        OutputFormat("GIF", ".gif", _gif),
+        OutputFormat("WebP", ".webp", _webp, _VISUAL_GROUPS | {"quality"}),
+        OutputFormat("GIF", ".gif", _gif, _VISUAL_GROUPS),
     )
 }
 

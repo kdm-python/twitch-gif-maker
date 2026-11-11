@@ -6,6 +6,40 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class OutputControlValues:
+    """Snapshot of editable visual controls, independent of Qt widgets."""
+
+    playback_speed: float
+    fps: int
+    width: int
+    height: int
+    quality_preset: str
+    sharpness_preset: str
+
+
+def resolve_visual_settings(
+    start_seconds: float | None,
+    end_seconds: float | None,
+    controls: OutputControlValues,
+    crop: tuple[int, int, int, int] | None,
+    *,
+    uses_quality: bool,
+) -> RenderSettings:
+    """Resolve an animation recipe without depending on GUI state."""
+    if start_seconds is None or end_seconds is None:
+        raise ValueError("Select a clip range on the timeline before export")
+    if end_seconds <= start_seconds:
+        raise ValueError("End time must be greater than start time")
+    return RenderSettings(
+        start_seconds=start_seconds, end_seconds=end_seconds,
+        fps=controls.fps, width=controls.width, height=controls.height,
+        playback_speed=controls.playback_speed,
+        quality_preset=controls.quality_preset if uses_quality else "balanced",
+        sharpness_preset=controls.sharpness_preset, crop=crop,
+    )
+
+
+@dataclass(frozen=True)
 class RenderSettings:
     """Resolved render configuration for export and preview generation."""
 

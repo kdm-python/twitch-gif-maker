@@ -16,6 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gifmaker.models.render_settings import OutputControlValues
+from gifmaker.services.output_formats import get_output_format
+
 
 class ExportControlsPanel(QWidget):
     """Compact export controls for render timing and target settings."""
@@ -118,23 +121,35 @@ class ExportControlsPanel(QWidget):
         self.primary_layout.addWidget(QLabel("Output speed"))
         self.primary_layout.addWidget(self.output_speed_slider)
         self.primary_layout.addWidget(self.output_speed_value_label)
-        self.primary_layout.addWidget(QLabel("FPS"))
+        fps_label = QLabel("FPS")
+        self.primary_layout.addWidget(fps_label)
         self.primary_layout.addWidget(self.output_fps_combo)
         self.primary_layout.addSpacing(8)
         self.primary_layout.addWidget(QLabel("Format"))
         self.primary_layout.addWidget(self.export_format_combo)
         self.primary_layout.addStretch(1)
 
-        self.secondary_layout.addWidget(QLabel("Size"))
+        size_label = QLabel("Size")
+        size_separator = QLabel("×")
+        sharpness_label = QLabel("Sharpness")
+        self.format_control_groups = {
+            "fps": (fps_label, self.output_fps_combo),
+            "size": (size_label, self.export_width_input, size_separator,
+                     self.export_height_input, self.aspect_ratio_lock, self.original_size_button),
+            "quality": (self.quality_label, self.quality_preset_combo),
+            "sharpness": (sharpness_label, self.sharpness_combo),
+            "crop": (self.apply_crop_button, self.reset_crop_button),
+        }
+        self.secondary_layout.addWidget(size_label)
         self.secondary_layout.addWidget(self.export_width_input)
-        self.secondary_layout.addWidget(QLabel("×"))
+        self.secondary_layout.addWidget(size_separator)
         self.secondary_layout.addWidget(self.export_height_input)
         self.secondary_layout.addWidget(self.aspect_ratio_lock)
         self.secondary_layout.addWidget(self.original_size_button)
         self.secondary_layout.addSpacing(8)
         self.secondary_layout.addWidget(self.quality_label)
         self.secondary_layout.addWidget(self.quality_preset_combo)
-        self.secondary_layout.addWidget(QLabel("Sharpness"))
+        self.secondary_layout.addWidget(sharpness_label)
         self.secondary_layout.addWidget(self.sharpness_combo)
         self.secondary_layout.addStretch(1)
         self.secondary_layout.addWidget(self.generate_preview_button)
@@ -200,7 +215,19 @@ class ExportControlsPanel(QWidget):
         self.gif_preview_pause_button.clicked.connect(window.pause_gif_preview)
 
     def set_output_format(self, output_format: str) -> None:
-        """Expose lossy quality only where it changes the selected format."""
-        uses_lossy_quality = output_format == "WebP"
-        self.quality_label.setVisible(uses_lossy_quality)
-        self.quality_preset_combo.setVisible(uses_lossy_quality)
+        """Show the selected format's optional control groups."""
+        groups = get_output_format(output_format).control_groups
+        for name, widgets in self.format_control_groups.items():
+            for widget in widgets:
+                widget.setVisible(name in groups)
+
+    def control_values(self) -> OutputControlValues:
+        """Capture control values without exposing widgets to render resolution."""
+        return OutputControlValues(
+            playback_speed=self.output_speed_slider.value() / 100,
+            fps=int(self.output_fps_combo.currentData() or 24),
+            width=self.export_width_input.value(),
+            height=self.export_height_input.value(),
+            quality_preset=str(self.quality_preset_combo.currentData()),
+            sharpness_preset=str(self.sharpness_combo.currentData()),
+        )

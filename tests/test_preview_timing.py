@@ -19,10 +19,10 @@ def test_late_timer_skips_frames_and_keeps_timeline() -> None:
     window._preview_frame_timer = QTimer(window)
     window._preview_frame_timer.setSingleShot(True)
     window._preview_frame_timer.timeout.connect(window._on_cached_frame_timeout)
-    controller._deadline = 10.025
-    with patch("gifmaker.gui.preview_controller.time.monotonic", return_value=10.080):
+    controller.player._deadline = 10.025
+    with patch("gifmaker.gui.animation_preview_player.time.monotonic", return_value=10.080):
         controller.on_cached_frame_timeout()
     assert window._preview_frame_index == 3
-    assert abs(controller._deadline - 10.100) < 0.001
+    assert abs(controller.player._deadline - 10.100) < 0.001
     window.close()
     app.processEvents()

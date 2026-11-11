@@ -12,8 +12,12 @@ from loguru import logger
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import QFileDialog
 
-from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.render_estimate import calculate_render_estimate, format_file_size
+from gifmaker.models.render_settings import (
+    RenderSettings,
+    RenderSpec,
+    resolve_visual_settings,
+)
 from gifmaker.services.gif_export import GifExportError, format_ffmpeg_error
 from gifmaker.services.output_formats import get_output_format
 from gifmaker.services.render_service import RenderService
@@ -48,29 +52,11 @@ class RenderController:
     ) -> RenderSettings:
         """Resolve the current timeline and controls into immutable settings."""
         window = self.window
-        if window.clip_start_time is None or window.clip_end_time is None:
-            raise ValueError("Select a clip range on the timeline before export")
-        if window.clip_end_time <= window.clip_start_time:
-            raise ValueError("End time must be greater than start time")
-        speed = window.output_speed_slider.value() / 100
-        fps = window.output_fps_combo.currentData() or 24
         selected_format = output_format or window.export_format_combo.currentText()
-        return RenderSettings(
-            start_seconds=window.clip_start_time,
-            end_seconds=window.clip_end_time,
-            fps=int(fps),
-            width=window.export_width_input.value(),
-            height=window.export_height_input.value(),
-            playback_speed=float(speed),
-            # GIF's 256-colour palette is fixed: its former Quality choices
-            # did not produce meaningful high-quality variants.
-            quality_preset=(
-                str(window.quality_preset_combo.currentData())
-                if selected_format == "WebP"
-                else "balanced"
-            ),
-            sharpness_preset=str(window.sharpness_combo.currentData()),
-            crop=window._current_crop,
+        return resolve_visual_settings(
+            window.clip_start_time, window.clip_end_time,
+            window.export_controls_panel.control_values(), window._current_crop,
+            uses_quality="quality" in get_output_format(selected_format).control_groups,
         )
 
     def _resolve_render_spec(self, *, output_format: str | None = None) -> RenderSpec:
@@ -426,7 +412,7 @@ class RenderController:
         self.window._last_preview_settings = job.spec.settings
         self.window.preview_controller.set_playback_speed(job.spec.settings.playback_speed)
         try:
-            self.window.preview_controller.set_movie(job.destination)
+            self.window.preview_controller.load(job.destination)
         except RuntimeError as exc:
             self.window._last_preview_settings = previous_settings
             self.window.preview_controller.set_playback_speed(previous_speed)
