@@ -8,7 +8,6 @@ from pathlib import Path
 
 from loguru import logger
 
-
 QUALITY_PRESETS: dict[str, dict[str, str | int]] = {
     "small": {
         "label": "Small file",
@@ -55,12 +54,15 @@ class GifExportError(Exception):
 def format_ffmpeg_error(stderr: str) -> str:
     """Make a missing WebP encoder actionable without masking other errors."""
     if "libwebp_anim" in stderr and (
-        "Unknown encoder" in stderr or "not recognized" in stderr
+        "Unknown encoder" in stderr
+        or "not recognized" in stderr
         or "Encoder not found" in stderr
     ):
         logger.error("FFmpeg WebP encoder error: {}", stderr)
-        return ("FFmpeg lacks libwebp_anim. Set GIFMAKER_FFMPEG to a WebP-capable "
-                "FFmpeg executable; see File → Documentation.")
+        return (
+            "FFmpeg lacks libwebp_anim. Set GIFMAKER_FFMPEG to a WebP-capable "
+            "FFmpeg executable; see File → Documentation."
+        )
     return stderr
 
 
@@ -100,9 +102,20 @@ def _validate_render_request(
         raise GifExportError(f"Unknown quality preset: {quality_preset}")
     if sharpness_preset not in SHARPNESS_PRESETS:
         raise GifExportError(f"Unknown sharpness preset: {sharpness_preset}")
-    if crop is not None and (crop[0] < 0 or crop[1] < 0 or crop[2] <= 0 or crop[3] <= 0):
-        raise GifExportError("Crop dimensions must be positive with non-negative origin")
+    if crop is not None and (
+        crop[0] < 0 or crop[1] < 0 or crop[2] <= 0 or crop[3] <= 0
+    ):
+        raise GifExportError(
+            "Crop dimensions must be positive with non-negative origin"
+        )
     return source, destination
+
+
+# (TODO)
+# Look at more generic function setup for building commands
+# The gif and webp build command functions are almost identical
+# Building commands for many more formats should build on shared functionality
+# build_command(format=webp...)
 
 
 def build_gif_command(
@@ -121,19 +134,44 @@ def build_gif_command(
 ) -> list[str]:
     """Build and validate the FFmpeg command used for a GIF render."""
     source, destination = _validate_render_request(
-        input_path, output_path, extension=".gif", start_seconds=start_seconds,
-        end_seconds=end_seconds, fps=fps, width=width, height=height,
-        playback_speed=playback_speed, quality_preset=quality_preset,
-        sharpness_preset=sharpness_preset, crop=crop,
+        input_path,
+        output_path,
+        extension=".gif",
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        playback_speed=playback_speed,
+        quality_preset=quality_preset,
+        sharpness_preset=sharpness_preset,
+        crop=crop,
     )
 
     target_height = height if height is not None else -1
     filters = _build_gif_filter_complex(
-        fps, width, target_height, crop, playback_speed, quality_preset, sharpness_preset
+        fps,
+        width,
+        target_height,
+        crop,
+        playback_speed,
+        quality_preset,
+        sharpness_preset,
     )
     return [
-        _ffmpeg_exe(), "-y", "-ss", str(start_seconds), "-to", str(end_seconds),
-        "-i", str(source), "-filter_complex", filters, "-loop", "0", str(destination),
+        _ffmpeg_exe(),
+        "-y",
+        "-ss",
+        str(start_seconds),
+        "-to",
+        str(end_seconds),
+        "-i",
+        str(source),
+        "-filter_complex",
+        filters,
+        "-loop",
+        "0",
+        str(destination),
     ]
 
 
@@ -153,10 +191,18 @@ def build_webp_command(
 ) -> list[str]:
     """Build and validate the FFmpeg command used for an animated WebP render."""
     source, destination = _validate_render_request(
-        input_path, output_path, extension=".webp", start_seconds=start_seconds,
-        end_seconds=end_seconds, fps=fps, width=width, height=height,
-        playback_speed=playback_speed, quality_preset=quality_preset,
-        sharpness_preset=sharpness_preset, crop=crop,
+        input_path,
+        output_path,
+        extension=".webp",
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        playback_speed=playback_speed,
+        quality_preset=quality_preset,
+        sharpness_preset=sharpness_preset,
+        crop=crop,
     )
 
     target_height = height if height is not None else -1
@@ -165,10 +211,26 @@ def build_webp_command(
     )
     preset = QUALITY_PRESETS[quality_preset]
     return [
-        _ffmpeg_exe(), "-y", "-ss", str(start_seconds), "-to", str(end_seconds),
-        "-i", str(source), "-vf", vf, "-c:v", "libwebp_anim", "-quality",
-        str(preset["webp_quality"]), "-preset", str(preset["webp_preset"]),
-        "-loop", "0", "-an", str(destination),
+        _ffmpeg_exe(),
+        "-y",
+        "-ss",
+        str(start_seconds),
+        "-to",
+        str(end_seconds),
+        "-i",
+        str(source),
+        "-vf",
+        vf,
+        "-c:v",
+        "libwebp_anim",
+        "-quality",
+        str(preset["webp_quality"]),
+        "-preset",
+        str(preset["webp_preset"]),
+        "-loop",
+        "0",
+        "-an",
+        str(destination),
     ]
 
 
@@ -188,10 +250,17 @@ def export_gif(
 ) -> None:
     """Export a GIF using the same command as the asynchronous render path."""
     command = build_gif_command(
-        input_path, output_path, start_seconds=start_seconds,
-        end_seconds=end_seconds, fps=fps, width=width, height=height,
-        playback_speed=playback_speed, quality_preset=quality_preset,
-        sharpness_preset=sharpness_preset, crop=crop,
+        input_path,
+        output_path,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        playback_speed=playback_speed,
+        quality_preset=quality_preset,
+        sharpness_preset=sharpness_preset,
+        crop=crop,
     )
     _run_export(command)
 
@@ -259,10 +328,17 @@ def export_webp(
 ) -> None:
     """Export a WebP using the same command as the asynchronous render path."""
     command = build_webp_command(
-        input_path, output_path, start_seconds=start_seconds,
-        end_seconds=end_seconds, fps=fps, width=width, height=height,
-        playback_speed=playback_speed, quality_preset=quality_preset,
-        sharpness_preset=sharpness_preset, crop=crop,
+        input_path,
+        output_path,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        playback_speed=playback_speed,
+        quality_preset=quality_preset,
+        sharpness_preset=sharpness_preset,
+        crop=crop,
     )
     _run_export(command)
 
