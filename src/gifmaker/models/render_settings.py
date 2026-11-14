@@ -36,29 +36,104 @@ def resolve_visual_settings(
         playback_speed=controls.playback_speed,
         quality_preset=controls.quality_preset if uses_quality else "balanced",
         sharpness_preset=controls.sharpness_preset, crop=crop,
+        format_settings=(WebPSettings(controls.quality_preset) if uses_quality else GIFSettings()),
     )
 
 
 @dataclass(frozen=True)
-class RenderSettings:
-    """Resolved render configuration for export and preview generation."""
+class SharedSettings:
+    """Selection and timing shared by output formats."""
 
     start_seconds: float
     end_seconds: float
+    playback_speed: float = 1.0
+
+
+@dataclass(frozen=True)
+class VisualSettings:
+    """Settings for formats that render video frames."""
+
     fps: int = 24
     width: int = 640
     height: int = 360
-    playback_speed: float = 1.0
-    quality_preset: str = "balanced"
     sharpness_preset: str = "mild"
     crop: tuple[int, int, int, int] | None = None
 
+
+@dataclass(frozen=True)
+class WebPSettings:
+    """WebP-specific encoding options."""
+
+    quality_preset: str = "balanced"
+
+
+@dataclass(frozen=True)
+class GIFSettings:
+    """GIF has a fixed palette configuration in the UI."""
+
+    @property
+    def quality_preset(self) -> str:
+        return "balanced"
+
+
+@dataclass(frozen=True, init=False)
+class RenderSettings:
+    """Immutable animation recipe composed from shared and visual settings.
+
+    The existing flat constructor and properties remain available to callers.
+    """
+
+    shared: SharedSettings
+    visual: VisualSettings
+    format_settings: WebPSettings | GIFSettings
+
+    def __init__(self, start_seconds: float, end_seconds: float, fps: int = 24,
+                 width: int = 640, height: int = 360, playback_speed: float = 1.0,
+                 quality_preset: str = "balanced", sharpness_preset: str = "mild",
+                 crop: tuple[int, int, int, int] | None = None, *,
+                 format_settings: WebPSettings | GIFSettings | None = None) -> None:
+        object.__setattr__(self, "shared", SharedSettings(start_seconds, end_seconds, playback_speed))
+        object.__setattr__(self, "visual", VisualSettings(fps, width, height, sharpness_preset, crop))
+        object.__setattr__(self, "format_settings", format_settings if format_settings is not None else WebPSettings(quality_preset))
+
+    @property
+    def start_seconds(self) -> float:
+        return self.shared.start_seconds
+
+    @property
+    def end_seconds(self) -> float:
+        return self.shared.end_seconds
+
+    @property
+    def playback_speed(self) -> float:
+        return self.shared.playback_speed
+
+    @property
+    def fps(self) -> int:
+        return self.visual.fps
+
+    @property
+    def width(self) -> int:
+        return self.visual.width
+
+    @property
+    def height(self) -> int:
+        return self.visual.height
+
+    @property
+    def sharpness_preset(self) -> str:
+        return self.visual.sharpness_preset
+
+    @property
+    def crop(self) -> tuple[int, int, int, int] | None:
+        return self.visual.crop
+
+    @property
+    def quality_preset(self) -> str:
+        return self.format_settings.quality_preset
+
     @property
     def effective_fps(self) -> int:
-        """Return the selected output frame rate.
-
-        Playback speed changes timestamps, not the number of frames per second.
-        """
         if self.playback_speed <= 0:
             raise ValueError("Playback speed must be greater than 0")
         return self.fps
