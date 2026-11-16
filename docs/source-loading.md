@@ -14,4 +14,10 @@ Qt's effective frame delays are used, and unknown frame counts, unreadable, stat
 
 `AnimationSourcePlayer` in `gifmaker.sources.animation_player` plays a prepared animation source using its actual frame timestamps. It exposes Qt signals for the displayed image, position, duration, play state and errors, plus play, pause, seek, playback rate and clear operations. It stops at the end of one cycle; playing again from the endpoint restarts at zero. Seeks are clamped to the source duration, with the last frame displayed at the endpoint. Playback uses a monotonic clock so a delayed timer can skip to the correct frame instead of accumulating drift.
 
-The player borrows the `LoadedSource`: it does not close it. Stop or clear the player and finish any render jobs before closing the source. The player reports missing frames or a source closed during playback as errors. It is not yet connected to the source panel or timeline; frame stepping, markers, UI lifecycle and WebP rendering remain later integration work.
+The player borrows the `LoadedSource`: it does not close it. Stop or clear the player and finish any render jobs before closing the source. The player reports missing frames or a source closed during playback as errors. It is not yet connected to the source panel; UI lifecycle and WebP rendering remain later integration work.
+
+## Animation timeline adapter
+
+`AnimationTimeline` derives frame boundaries and the exclusive cycle endpoint from a live prepared source. It maps timestamps to actual frames, steps by frame index and converts boundary-index selections to half-open time intervals. `AnimationTimelineController` connects that model and the source player to `MarkerSeekSlider`: its slider values are milliseconds, while its markers use boundary indices and are positioned by elapsed time. A one-frame selection and selection through the end of the final frame are supported.
+
+The adapter is not yet installed in the main window. When integrating source loading, route slider, marker and player signals through the active source's controller, avoiding simultaneous MP4 and animation handlers. Dispose the adapter before closing its borrowed source or restoring the MP4 slider. The render path must still consume these selection times and the prepared frames; this adapter alone does not enable WebP editing or export.

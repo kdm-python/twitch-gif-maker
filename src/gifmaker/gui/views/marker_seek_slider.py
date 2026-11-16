@@ -1,3 +1,6 @@
+from bisect import bisect_left
+from itertools import pairwise
+
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QSlider, QStyle, QStyleOptionSlider, QWidget
@@ -16,9 +19,33 @@ class MarkerSeekSlider(QSlider):
         self._start_frame = 0
         self._end_frame = 0
         self._min_gap_frames = 2
+        self._animation_boundaries: tuple[int, ...] | None = None
         self._dragging_marker: str | None = None
         self._marker_hit_radius = 12
         self.setMinimumHeight(28)
+
+    def set_animation_boundaries(self, boundaries: tuple[int, ...] | None) -> None:
+        """Switch marker geometry to animation timestamps, or restore video mode.
+
+        In animation mode slider values are milliseconds and marker values are
+        boundary indices. The final boundary is the exclusive end of the clip.
+        """
+        if boundaries is not None:
+            if len(boundaries) < 2 or boundaries[0] != 0 or any(
+                a >= b for a, b in pairwise(boundaries)
+            ):
+                raise ValueError("Invalid animation boundaries")
+            self._animation_boundaries = tuple(boundaries)
+            self._min_gap_frames = 1
+            self.setRange(0, boundaries[-1])
+            self.set_total_frames(len(boundaries))
+            self.set_selection(0, len(boundaries) - 1, emit_signal=False)
+        else:
+            self._animation_boundaries = None
+            self._min_gap_frames = 2
+            self.set_total_frames(0)
+            self.setRange(0, 0)
+        self.update()
 
     def set_total_frames(self, total_frames: int) -> None:
         """Set total frame count and ensure marker bounds remain valid."""
@@ -99,7 +126,10 @@ class MarkerSeekSlider(QSlider):
             return left
 
         left, _, width = self._groove_rect()
-        ratio = frame / (self._total_frames - 1)
+        if self._animation_boundaries is not None:
+            ratio = self._animation_boundaries[frame] / self._animation_boundaries[-1]
+        else:
+            ratio = frame / (self._total_frames - 1)
         return left + round(ratio * width)
 
     def _x_to_frame(self, x_pos: int) -> int:
@@ -109,6 +139,16 @@ class MarkerSeekSlider(QSlider):
         left, right, width = self._groove_rect()
         clamped_x = max(left, min(x_pos, right))
         ratio = (clamped_x - left) / width
+        if self._animation_boundaries is not None:
+            target = ratio * self._animation_boundaries[-1]
+            index = bisect_left(self._animation_boundaries, target)
+            if index == 0:
+                return 0
+            if index == len(self._animation_boundaries):
+                return index - 1
+            previous = self._animation_boundaries[index - 1]
+            following = self._animation_boundaries[index]
+            return index - 1 if target - previous <= following - target else index
         return round(ratio * (self._total_frames - 1))
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
