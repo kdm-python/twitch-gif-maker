@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QStyle,
     QVBoxLayout,
 )
@@ -64,6 +65,31 @@ class VideoDropWidget(QVideoWidget):
             return
         self.fileDropped.emit(path)
         event.acceptProposedAction()
+
+
+class AnimationSurface(QLabel):
+    """Display a scaled animation frame while letting the panel handle drops."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._frame = QPixmap()
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumHeight(140)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setStyleSheet("border: 1px solid palette(mid);")
+
+    def set_frame(self, image):
+        self._frame = QPixmap.fromImage(image)
+        self._scale_frame()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._scale_frame()
+
+    def _scale_frame(self):
+        if not self._frame.isNull():
+            self.setPixmap(self._frame.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                                               Qt.TransformationMode.SmoothTransformation))
 
 
 class VideoPreviewPanel(QGroupBox):
@@ -175,7 +201,11 @@ class VideoPreviewPanel(QGroupBox):
             button.setFixedHeight(selection_button_height)
             button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
-        self._layout.addWidget(self.video_widget)
+        self.animation_widget = AnimationSurface(self)
+        self.source_stack = QStackedWidget(self)
+        self.source_stack.addWidget(self.video_widget)
+        self.source_stack.addWidget(self.animation_widget)
+        self._layout.addWidget(self.source_stack)
         self._layout.addLayout(controls_layout)
 
     def bind_window(self, window) -> None:

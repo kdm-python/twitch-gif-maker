@@ -2,6 +2,10 @@
 
 Install the project and its dependencies with `poetry install`. The application also requires `ffmpeg` and `ffprobe` on your PATH.
 
+Opening animated WebP sources also requires the libwebpdemux shared library to be installed and discoverable. WebP inputs support playback, trimming, preview generation and WebP export. GIF output remains available for MP4 sources.
+
+Some WebP selections contain only an unchanged picture. These need the `webpmux` executable to preserve their animation duration. Install it alongside libwebp or set `GIFMAKER_WEBPMUX` to its executable path. GIF Maker reports an error if it is needed and unavailable.
+
 WebP previews and exports require an FFmpeg build with the `libwebp_anim` encoder. Check it with `ffmpeg -hide_banner -encoders | grep libwebp_anim`. If your usual FFmpeg lacks it, install a build with libwebp support; on macOS with Homebrew, `brew install ffmpeg-full` is one option. Tell GIF Maker which executable to use before launching it:
 
 ```sh

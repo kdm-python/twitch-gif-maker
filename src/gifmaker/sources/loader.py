@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Protocol
 
-from PySide6.QtGui import QImageReader
-
-from gifmaker.sources.model import LoadedSource, SourceFrame, SourceInfo
+from gifmaker.sources.model import LoadedSource, SourceInfo
 from gifmaker.video.probe import VideoProbeError, probe_video
 
 
@@ -35,46 +32,12 @@ class WebpSourceLoader:
     """Decode a single animation cycle to lossless, composited temporary frames."""
 
     def load(self, path: Path) -> LoadedSource:
-        reader = QImageReader(str(path))
-        reader.setDecideFormatFromContent(True)
-        if bytes(reader.format()).lower() != b"webp" or not reader.canRead():
-            raise SourceLoadError(f"Could not read WebP: {reader.errorString()}")
-        if not reader.supportsAnimation():
-            raise SourceLoadError("WebP source must be animated")
-        expected_count = reader.imageCount()
-        if expected_count <= 0:
-            raise SourceLoadError("WebP frame count could not be determined")
-        temp = TemporaryDirectory(prefix="gifmaker-source-")
+        from gifmaker.sources.webp_decoder import load_reference_webp
+
         try:
-            frames = []
-            elapsed = 0
-            dimensions = None
-            while True:
-                image = reader.read()
-                if image.isNull():
-                    break
-                if dimensions is None:
-                    dimensions = (image.width(), image.height())
-                elif dimensions != (image.width(), image.height()):
-                    raise SourceLoadError("WebP frames have inconsistent canvas sizes")
-                delay = reader.nextImageDelay()
-                if delay <= 0:
-                    raise SourceLoadError("WebP frame has an unsupported delay")
-                frame_path = Path(temp.name) / f"frame-{len(frames):08d}.png"
-                if not image.save(str(frame_path), "PNG"):
-                    raise SourceLoadError("Could not save a decoded WebP frame")
-                frames.append(SourceFrame(frame_path, elapsed, delay))
-                elapsed += delay
-            if len(frames) != expected_count:
-                raise SourceLoadError("WebP animation could not be decoded completely")
-            if len(frames) < 2 or dimensions is None:
-                raise SourceLoadError("WebP source must contain at least two readable frames")
-            duration = elapsed / 1000
-            info = SourceInfo(duration, *dimensions, "webp", len(frames) / duration)
-            return LoadedSource(path, info, frames=tuple(frames), temporary_directory=temp)
-        except Exception:
-            temp.cleanup()
-            raise
+            return load_reference_webp(path)
+        except (OSError, ValueError, RuntimeError, AttributeError) as exc:
+            raise SourceLoadError(f"Could not read animated WebP: {exc}") from exc
 
 
 _LOADERS: dict[str, SourceLoader] = {".mp4": Mp4SourceLoader(), ".webp": WebpSourceLoader()}

@@ -1,6 +1,6 @@
 # Animated WebP source timing: proposed contract
 
-This is the intended contract for the future WebP source backend, not a description of current application behaviour. The application does not yet accept WebP input. It uses one animation cycle as its editable source regardless of the source loop count.
+The WebP source backend uses one animation cycle as its editable source regardless of the source loop count. These rules describe its timeline and output sampling.
 
 ## Timeline and frame boundaries
 

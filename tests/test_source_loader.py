@@ -89,7 +89,7 @@ def test_failed_frame_write_cleans_prepared_directory(tmp_path):
         created.append(Path(temp.name))
         return temp
 
-    with (patch("gifmaker.sources.loader.TemporaryDirectory", side_effect=make_directory),
+    with (patch("gifmaker.sources.webp_decoder.TemporaryDirectory", side_effect=make_directory),
           patch.object(QImage, "save", return_value=False),
           pytest.raises(SourceLoadError, match="save")):
         load_source(FIXTURES / "variable_delays.webp")

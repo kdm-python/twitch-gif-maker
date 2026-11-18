@@ -12,7 +12,7 @@ from gifmaker.video.probe import VideoProbeError, probe_video
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Open a video or Twitch clip in GIF Maker.")
     inputs = parser.add_mutually_exclusive_group()
-    inputs.add_argument("--file", metavar="PATH", help="open a local MP4 file")
+    inputs.add_argument("--file", metavar="PATH", help="open a local MP4 or animated WebP file")
     inputs.add_argument("--twitch-clip", metavar="URL", help="download and open a Twitch clip")
     args = parser.parse_args(argv)
 
@@ -21,13 +21,13 @@ def main(argv: list[str] | None = None) -> int:
             source = None
             if args.file is not None:
                 source = Path(args.file).expanduser().resolve()
-                if source.suffix.lower() != ".mp4":
-                    raise ValueError("Only MP4 files are supported.")
+                if source.suffix.lower() not in (".mp4", ".webp"):
+                    raise ValueError("Only MP4 and animated WebP files are supported.")
                 if not source.is_file():
                     raise ValueError(f"File not found: {source}")
             elif args.twitch_clip is not None:
                 source = download_clip(args.twitch_clip, Path(temp_dir))
-            if source is not None:
+            if source is not None and source.suffix.lower() == ".mp4":
                 video_info = probe_video(source)
         except (ValueError, ClipDownloadError, VideoProbeError, OSError) as exc:
             print(f"gifmaker: {exc}", file=sys.stderr)
@@ -39,7 +39,9 @@ def main(argv: list[str] | None = None) -> int:
 
         app = QApplication.instance() or QApplication([])
         window = MainWindow()
-        if source is not None:
+        if source is not None and source.suffix.lower() == ".webp":
+            window.video_session_controller.open_video_path(str(source))
+        elif source is not None:
             window.current_video_path = str(source)
             window.video_session_controller.load_video_preview(str(source), video_info, None)
         window.show()

@@ -80,7 +80,7 @@ def test_dropped_non_mp4_shows_an_explanatory_dialog(tmp_path: Path) -> None:
 
     warning.assert_called_once()
     assert warning.call_args.args[1] == "Unsupported video"
-    assert "Only MP4 videos" in warning.call_args.args[2]
+    assert "MP4 and animated WebP" in warning.call_args.args[2]
     app.quit()
 
 
