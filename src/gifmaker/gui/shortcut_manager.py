@@ -22,6 +22,7 @@ Keyboard mappings:
     - Shift+E: Export the GIF
 - Output preview controls
     - Shift+G: Generate an output preview
+    - p: Toggle output preview playback
     - a: Apply the current crop to the output preview
     - r: Reset the crop on the output preview
     - [: Decrease output speed
@@ -83,6 +84,7 @@ SHORTCUT_HELP: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         "Output preview controls",
         (
             ("Shift+G", "Generate an output preview"),
+            ("P", "Toggle output preview playback"),
             ("A", "Apply the current crop to the output preview"),
             ("R", "Reset the crop on the output preview"),
             ("[", "Decrease output speed"),
@@ -137,6 +139,11 @@ class ShortcutManager:
             "generate_gif_preview",
             QKeySequence(Qt.SHIFT | Qt.Key.Key_G),
             window._shortcut_generate_gif_preview,
+        )
+        self._register(
+            "toggle_gif_preview_playback",
+            Qt.Key.Key_P,
+            window._shortcut_toggle_gif_preview_playback,
         )
 
         # GIF preview controls

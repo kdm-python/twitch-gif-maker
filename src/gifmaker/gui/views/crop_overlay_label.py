@@ -16,6 +16,11 @@ class CropOverlayLabel(QLabel):
 
     cropChanged = Signal(int, int, int, int)  # x, y, w, h in source-video pixels
     cropCleared = Signal()
+    resized = Signal()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.resized.emit()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)

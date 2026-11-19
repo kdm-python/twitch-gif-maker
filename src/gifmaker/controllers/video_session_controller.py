@@ -534,21 +534,21 @@ class VideoSessionController:
         window.selection_changed.emit(start_frame, end_frame)
 
     def update_clip_selection_display(self) -> None:
-        """Synchronise marker labels and precision inputs from frame state."""
+        """Synchronise the timeline timestamps and selected source duration."""
         window = self.window
         if window.clip_start_time is None or window.clip_end_time is None or not window.total_frames:
-            window.start_frame_label.setText("--:--:--.---")
-            window.end_frame_label.setText("--:--:--.---")
-            window.clip_selection_label.setText("Selection: Not selected")
+            window.preview_panel.selection_times.set_times("--:--:--.---", "--:--:--.---")
+            window.clip_selection_label.setText("Length: —")
             return
         if self._animation_timeline is not None:
-            window.start_frame_label.setText(format_ms(round(window.clip_start_time * 1000)))
-            window.end_frame_label.setText(format_ms(round(window.clip_end_time * 1000)))
+            start = format_timestamp_from_frame(round(window.clip_start_time * 1000), 1000)
+            end = format_timestamp_from_frame(round(window.clip_end_time * 1000), 1000)
         else:
-            window.start_frame_label.setText(self._format_timestamp_from_frame(window.start_frame))
-            window.end_frame_label.setText(self._format_timestamp_from_frame(window.end_frame))
+            start = self._format_timestamp_from_frame(window.start_frame)
+            end = self._format_timestamp_from_frame(window.end_frame)
+        window.preview_panel.selection_times.set_times(start, end)
         window.clip_selection_label.setText(
-            f"Selection: {window.clip_end_time - window.clip_start_time:.3f}s"
+            f"Length: {window.clip_end_time - window.clip_start_time:.3f}s"
         )
     def _leftArrowPressed(self) -> None:
         """Seek one source frame backwards."""

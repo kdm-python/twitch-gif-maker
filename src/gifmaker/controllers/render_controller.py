@@ -467,6 +467,8 @@ class RenderController:
             self.window.export_status_label.setText(f"Status: Preview failed: {exc}")
             return
 
+        self.window.export_controls_panel.set_preview_playing(True, enabled=True)
+
         window = self.window
         previous_file = window._preview_temp_file
         window._preview_temp_file = job.destination
@@ -607,13 +609,30 @@ class RenderController:
         self.window._current_crop = None
         self.on_crop_dimensions_changed()
 
+    def set_gif_preview_playing(self, playing: bool) -> None:
+        """Play or pause the generated preview from its single toggle control."""
+        if self.window._last_preview_spec is None:
+            self.window.export_controls_panel.set_preview_playing(False, enabled=False)
+            return
+        self.window.export_controls_panel.set_preview_playing(playing, enabled=True)
+        if playing:
+            self.window.preview_controller.play()
+        else:
+            self.window.preview_controller.pause()
+
+    def toggle_gif_preview_playback(self) -> None:
+        """Toggle generated-preview playback while keeping its button in sync."""
+        button = self.window.gif_preview_play_pause_button
+        if button.isEnabled():
+            self.set_gif_preview_playing(not button.isChecked())
+
     def play_gif_preview(self) -> None:
-        """Start the currently generated preview."""
-        self.window.preview_controller.play()
+        """Compatibility adapter for callers that explicitly start the preview."""
+        self.set_gif_preview_playing(True)
 
     def pause_gif_preview(self) -> None:
-        """Pause the currently generated preview."""
-        self.window.preview_controller.pause()
+        """Compatibility adapter for callers that explicitly pause the preview."""
+        self.set_gif_preview_playing(False)
 
     def clear_preview_state(self, *, remove_temp_file: bool) -> None:
         """Dispose of preview playback and optionally delete its temporary file."""
@@ -621,6 +640,7 @@ class RenderController:
         self._refresh_after_unlock = False
         self._cancel_preview_job()
         self.window.preview_controller.clear(remove_temp_file=remove_temp_file)
+        self.window.export_controls_panel.set_preview_playing(False, enabled=False)
         self.update_output_summary()
 
     def cancel_active_renders(self) -> None:

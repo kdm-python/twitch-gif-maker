@@ -1,6 +1,6 @@
 """Widget construction for the shared output controls."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
+    QStyle,
 )
 
 
@@ -101,8 +102,26 @@ class PreviewPlaybackControls:
     """Create the PreviewPlaybackControls widgets independently of a layout."""
 
     def __init__(self) -> None:
-        self.gif_preview_play_button = QPushButton("Play")
-        self.gif_preview_pause_button = QPushButton("Pause")
+        self.gif_preview_play_pause_button = QPushButton()
+        self.gif_preview_play_pause_button.setCheckable(True)
+        self.gif_preview_play_pause_button.setFixedSize(32, 32)
+        self.gif_preview_play_pause_button.setIconSize(QSize(16, 16))
+        self.gif_preview_play_pause_button.setEnabled(False)
+        self.set_playing(False)
+
+    def set_playing(self, playing: bool) -> None:
+        """Reflect the generated preview's playback state in its icon-only button."""
+        button = self.gif_preview_play_pause_button
+        button.setChecked(playing)
+        icon = (
+            QStyle.StandardPixmap.SP_MediaPause
+            if playing
+            else QStyle.StandardPixmap.SP_MediaPlay
+        )
+        action = "Pause" if playing else "Play"
+        button.setIcon(button.style().standardIcon(icon))
+        button.setToolTip(f"{action} output preview")
+        button.setAccessibleName(f"{action} output preview")
 
 
 class FormatControls:

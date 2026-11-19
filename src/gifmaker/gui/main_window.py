@@ -266,17 +266,14 @@ class MainWindow(QMainWindow):
         self.preview_splitter.setObjectName("preview_splitter")
         self.preview_splitter.setChildrenCollapsible(False)
         self.preview_splitter.addWidget(self.preview_panel)
-        # Keep the existing Selection box intact, but place it between the two
-        # preview surfaces so it reads as the bridge between source and output.
-        self.preview_splitter.addWidget(self.preview_panel.selection_group)
         self.preview_splitter.addWidget(gif_preview)
-        self.preview_splitter.setSizes([500, 64, 400])
+        # Initial height weights: [video player, output preview].
+        # For example, [450, 550] gives approximately 45% / 55%.
+        self.preview_splitter.setSizes([500, 500])
         self.preview_splitter.setStretchFactor(0, 1)
-        self.preview_splitter.setStretchFactor(1, 0)
-        self.preview_splitter.setStretchFactor(2, 1)
+        self.preview_splitter.setStretchFactor(1, 1)
 
-        # Keep the video and GIF canvases as the stretchable regions around the
-        # compact selection strip.
+        # Keep both previews resizable using the divider.
         layout.addWidget(self.preview_splitter, stretch=1)
         layout.addWidget(self.export_controls_panel)
         layout.addWidget(self.create_bottom_toolbar())
@@ -294,18 +291,11 @@ class MainWindow(QMainWindow):
             "audio_output",
             "play_button",
             "playback_speed_combo",
-            "set_start_button",
-            "set_end_button",
             "seek_slider",
             "seek_time_label",
             "mute_button",
-            "selection_group",
             "start_frame_label",
-            "start_nudge_back_button",
-            "start_nudge_forward_button",
             "end_frame_label",
-            "end_nudge_back_button",
-            "end_nudge_forward_button",
             "clip_selection_label",
         ):
             setattr(self, name, getattr(panel, name))
@@ -327,8 +317,7 @@ class MainWindow(QMainWindow):
             "apply_crop_button",
             "sharpness_combo",
             "reset_crop_button",
-            "gif_preview_play_button",
-            "gif_preview_pause_button",
+            "gif_preview_play_pause_button",
             "export_format_combo",
         ):
             setattr(self, name, getattr(panel, name))
@@ -342,12 +331,13 @@ class MainWindow(QMainWindow):
         self.gif_preview_label.setAlignment(Qt.AlignCenter)
         self.gif_preview_label.setMinimumHeight(180)
         self.gif_preview_label.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
+            QSizePolicy.Ignored, QSizePolicy.Ignored
         )
         self.gif_preview_label.setStyleSheet("border: 1px solid palette(mid);")
         self.gif_preview_label.cropChanged.connect(self._on_crop_changed)
         self.gif_preview_label.cropCleared.connect(self._on_crop_cleared)
         self.preview_controller.bind(self.gif_preview_label)
+        self.gif_preview_label.resized.connect(self.preview_controller.update_scaled_size)
         layout.addWidget(self.gif_preview_label)
         return group
 
@@ -549,6 +539,9 @@ class MainWindow(QMainWindow):
 
     def _shortcut_generate_gif_preview(self) -> None:
         self.generate_gif_preview()
+
+    def _shortcut_toggle_gif_preview_playback(self) -> None:
+        self.toggle_gif_preview_playback()
 
     def _shortcut_export_file(self) -> None:
         self.export_gif_from_selection()

@@ -43,6 +43,9 @@ def test_animation_loading_selection_and_return_to_video():
     assert controller._animation_player.position_ms == 350
     window.seek_slider.set_selection(2, 3)
     assert (window.clip_start_time, window.clip_end_time) == (0.35, 0.75)
+    assert window.start_frame_label.text() == "00:00:00.350"
+    assert window.end_frame_label.text() == "00:00:00.750"
+    assert window.clip_selection_label.text() == "Length: 0.400s"
     window._pending_video_path = "next.mp4"
     window._pending_video_info = VideoInfo(2, 16, 16, 24, "h264")
     controller.on_media_status_changed(QMediaPlayer.MediaStatus.LoadedMedia)

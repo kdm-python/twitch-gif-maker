@@ -30,14 +30,14 @@ def test_main_window_uses_splitter_for_resizable_preview_sections() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
-    central_layout = window.centralWidget().layout()
     resizable_container = window.preview_splitter
 
     assert isinstance(resizable_container, QSplitter)
-    assert resizable_container.count() == 3
+    assert resizable_container.count() == 2
     assert isinstance(resizable_container.widget(0), QGroupBox)
     assert isinstance(resizable_container.widget(1), QGroupBox)
-    assert isinstance(resizable_container.widget(2), QGroupBox)
+    assert resizable_container.widget(0) is window.preview_panel
+    assert resizable_container.widget(1).isAncestorOf(window.gif_preview_label)
 
     app.quit()
 
@@ -55,6 +55,8 @@ def test_main_window_allows_tighter_horizontal_minimum() -> None:
 def test_main_window_gives_more_space_to_preview_panels() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
+    window.show()
+    app.processEvents()
 
     assert window.preview_panel.video_widget.minimumHeight() <= 140
     assert window.preview_panel.acceptDrops()
@@ -63,9 +65,9 @@ def test_main_window_gives_more_space_to_preview_panels() -> None:
 
     sizes = window.preview_splitter.sizes()
     assert sizes[0] >= 200
-    assert sizes[1] >= 40
-    assert sizes[2] >= 180
+    assert abs(sizes[1] - sizes[0]) <= 1
 
+    window.close()
     app.quit()
 
 
@@ -383,7 +385,7 @@ def test_render_settings_helpers_parse_and_format_time() -> None:
     assert settings.effective_fps == 24
 
 
-def test_main_window_has_player_playback_speed_control_and_selection_group() -> None:
+def test_main_window_has_compact_player_controls_and_inline_selection_length() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
@@ -394,12 +396,15 @@ def test_main_window_has_player_playback_speed_control_and_selection_group() -> 
     assert window.preview_panel.playback_speed_combo.itemText(2) == "1×"
     assert window.preview_panel.playback_speed_combo.itemText(3) == "1.5×"
     assert window.preview_panel.playback_speed_combo.itemText(4) == "2×"
-    assert window.preview_panel.selection_group.title() == "Selection"
-    assert window.preview_panel.selection_group.maximumHeight() <= 64
-    assert (
-        window.preview_panel.selection_group.parentWidget() is window.preview_splitter
-    )
-    assert window.clip_selection_label.text() == "Selection: Not selected"
+    assert not hasattr(window.preview_panel, "selection_group")
+    controls = window.preview_panel.controls_layout
+    assert controls.itemAtPosition(0, 0).widget() is window.play_button
+    assert controls.itemAtPosition(0, 1).widget() is window.playback_speed_combo
+    assert controls.itemAtPosition(0, 2).widget() is window.seek_slider
+    assert controls.itemAtPosition(0, 3).widget() is window.seek_time_label
+    assert controls.itemAtPosition(0, 4).widget() is window.clip_selection_label
+    assert controls.itemAtPosition(0, 5).widget() is window.mute_button
+    assert window.clip_selection_label.text() == "Length: —"
     assert window.mute_button.text() == ""
     assert window.mute_button.toolTip() == "Mute video audio"
     assert window.open_button.text() == "Open Video File"
@@ -475,18 +480,29 @@ def test_format_switch_preserves_shared_controls_and_webp_quality() -> None:
 
 
 def test_export_controls_keep_preview_playback_on_the_primary_row() -> None:
-    """The duplicate time inputs are replaced by the GIF preview controls."""
+    """The generated preview has one compact play/pause control on the first row."""
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     panel = window.export_controls_panel
 
     assert not hasattr(panel, "export_start_input")
     assert not hasattr(panel, "export_end_input")
-    assert panel.primary_layout.indexOf(panel.gif_preview_play_button) >= 0
-    assert panel.primary_layout.indexOf(panel.gif_preview_pause_button) >= 0
-    assert panel.secondary_layout.indexOf(panel.gif_preview_play_button) == -1
-    assert panel.secondary_layout.indexOf(panel.gif_preview_pause_button) == -1
+    button = panel.gif_preview_play_pause_button
+    assert panel.primary_layout.indexOf(button) >= 0
+    assert panel.secondary_layout.indexOf(button) == -1
+    assert button.text() == ""
+    assert button.size().width() == button.size().height() == 32
 
+    app.quit()
+
+
+def test_gif_preview_playback_toggle_uses_p_shortcut() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    shortcut = window.shortcut_manager.shortcuts["toggle_gif_preview_playback"]
+
+    assert shortcut.key() == QKeySequence(Qt.Key.Key_P)
+    window.close()
     app.quit()
 
 

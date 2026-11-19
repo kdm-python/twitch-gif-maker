@@ -18,6 +18,7 @@ class AnimationPreviewPlayer:
         self._playback_speed = 1.0
         self._deadline = 0.0
         self._remaining_ms = None
+        self._movie_source_size = QSize()
 
     def _start_frame_timer(self, delay_ms: float) -> None:
         self._deadline = time.monotonic() + delay_ms / 1000
@@ -164,6 +165,7 @@ class AnimationPreviewPlayer:
             pass
 
         orig_rect = movie.frameRect()
+        self._movie_source_size = orig_rect.size()
         if orig_rect.isValid() and orig_rect.width() > 0 and orig_rect.height() > 0:
             label_size = (
                 self.preview_label.size() if self.preview_label is not None else None
@@ -199,25 +201,8 @@ class AnimationPreviewPlayer:
                 if pix is None or pix.isNull():
                     continue
 
-                scaled_size = movie.scaledSize()
-                if (
-                    scaled_size.isValid()
-                    and scaled_size.width() > 0
-                    and scaled_size.height() > 0
-                ):
-                    pix = pix.scaled(
-                        scaled_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                    )
-                else:
-                    if self.preview_label is not None:
-                        label_size = self.preview_label.size()
-                        if label_size.width() > 0 and label_size.height() > 0:
-                            pix = pix.scaled(
-                                label_size,
-                                Qt.KeepAspectRatio,
-                                Qt.SmoothTransformation,
-                            )
-
+                # Preserve decoded resolution so enlarging never rescales an
+                # already reduced frame or changes the exported artifact.
                 cached_frames.append(pix)
                 dur = reader.nextImageDelay()
                 cached_durations.append(max(1, int(dur)))
@@ -227,8 +212,7 @@ class AnimationPreviewPlayer:
             self.window._preview_frame_cache = cached_frames
             self.window._preview_frame_durations = cached_durations
             self.window._preview_frame_index = 0
-            if self.preview_label is not None:
-                self.preview_label.setPixmap(self.window._preview_frame_cache[0])
+            self._display_cached_frame()
             self.window._preview_frame_timer = QTimer(self.window)
             self.window._preview_frame_timer.setSingleShot(True)
             self.window._preview_frame_timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -260,17 +244,19 @@ class AnimationPreviewPlayer:
         self.window._preview_movie = movie
 
     def update_scaled_size(self) -> None:
-        """Scale the current preview movie to fit the preview label."""
+        """Fit either playback backend to the current preview contents area."""
+        if self.window._preview_frame_cache:
+            self._display_cached_frame()
+            return
         movie = self.window._preview_movie
         if movie is None or self.preview_label is None:
             return
 
-        orig_rect = movie.frameRect()
-        orig_size = orig_rect.size()
+        orig_size = self._movie_source_size
         if orig_size.width() <= 0 or orig_size.height() <= 0:
             return
 
-        label_size = self.preview_label.size()
+        label_size = self.preview_label.contentsRect().size()
         if label_size.width() <= 0 or label_size.height() <= 0:
             return
 
@@ -280,6 +266,17 @@ class AnimationPreviewPlayer:
         new_w = max(1, int(orig_size.width() * scale))
         new_h = max(1, int(orig_size.height() * scale))
         movie.setScaledSize(QSize(new_w, new_h))
+
+    def _display_cached_frame(self) -> None:
+        """Scale from the original frame, including when playback is paused."""
+        if self.preview_label is None or not self.window._preview_frame_cache:
+            return
+        frame = self.window._preview_frame_cache[self.window._preview_frame_index]
+        self.preview_label.setPixmap(frame.scaled(
+            self.preview_label.contentsRect().size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        ))
 
     def on_cached_frame_timeout(self) -> None:
         """Advance cached frame playback and schedule the next timeout."""
@@ -303,9 +300,7 @@ class AnimationPreviewPlayer:
             self._deadline += self._frame_delay(self.window._preview_frame_index) / 1000
             if self._deadline > now:
                 break
-        pix = self.window._preview_frame_cache[self.window._preview_frame_index]
-        if self.preview_label is not None:
-            self.preview_label.setPixmap(pix)
+        self._display_cached_frame()
         if self.window._preview_frame_timer is not None:
             self.window._preview_frame_timer.start(max(1, round((self._deadline - now) * 1000)))
 

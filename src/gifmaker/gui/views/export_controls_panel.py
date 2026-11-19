@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -28,15 +31,17 @@ class ExportControlsPanel(QWidget):
 
         self.primary_layout = QHBoxLayout()
         self.primary_layout.setContentsMargins(0, 0, 0, 0)
-        self.primary_layout.setSpacing(8)
+        self.primary_layout.setSpacing(12)
+        self.primary_layout.setAlignment(Qt.AlignVCenter)
 
         self.secondary_layout = QHBoxLayout()
         self.secondary_layout.setContentsMargins(0, 0, 0, 0)
-        self.secondary_layout.setSpacing(8)
+        self.secondary_layout.setSpacing(12)
+        self.secondary_layout.setAlignment(Qt.AlignVCenter)
 
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
-        self.root_layout.setSpacing(8)
+        self.root_layout.setSpacing(10)
 
         controls = ExportControlWidgets()
         for group in controls.groups:
@@ -50,10 +55,7 @@ class ExportControlsPanel(QWidget):
         self.button_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.button_row.setLayout(self.secondary_layout)
 
-        self.primary_layout.addWidget(QLabel("Preview"))
-        self.primary_layout.addWidget(self.gif_preview_play_button)
-        self.primary_layout.addWidget(self.gif_preview_pause_button)
-        self.primary_layout.addSpacing(8)
+        self.primary_layout.addWidget(self.gif_preview_play_pause_button)
         self.primary_layout.addWidget(QLabel("Output speed"))
         self.primary_layout.addWidget(self.output_speed_slider)
         self.primary_layout.addWidget(self.output_speed_value_label)
@@ -82,7 +84,6 @@ class ExportControlsPanel(QWidget):
         self.secondary_layout.addWidget(self.export_height_input)
         self.secondary_layout.addWidget(self.aspect_ratio_lock)
         self.secondary_layout.addWidget(self.original_size_button)
-        self.secondary_layout.addSpacing(8)
         self.secondary_layout.addWidget(self.quality_label)
         self.secondary_layout.addWidget(self.quality_preset_combo)
         self.secondary_layout.addWidget(sharpness_label)
@@ -147,8 +148,35 @@ class ExportControlsPanel(QWidget):
         self.generate_preview_button.clicked.connect(window.generate_gif_preview)
         self.apply_crop_button.clicked.connect(window.apply_crop_to_preview)
         self.reset_crop_button.clicked.connect(window.reset_preview_crop)
-        self.gif_preview_play_button.clicked.connect(window.play_gif_preview)
-        self.gif_preview_pause_button.clicked.connect(window.pause_gif_preview)
+        self.gif_preview_play_pause_button.clicked.connect(
+            window.set_gif_preview_playing
+        )
+
+    def set_preview_playing(self, playing: bool, *, enabled: bool | None = None) -> None:
+        """Synchronise the compact preview control with the player lifecycle."""
+        button = self.gif_preview_play_pause_button
+        button.setChecked(playing)
+        icon = (
+            QStyle.StandardPixmap.SP_MediaPause
+            if playing
+            else QStyle.StandardPixmap.SP_MediaPlay
+        )
+        action = "Pause" if playing else "Play"
+        icon_size = QSize(16, 16)
+        glyph = button.style().standardIcon(icon).pixmap(icon_size)
+        tinted_glyph = QPixmap(icon_size)
+        tinted_glyph.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(tinted_glyph)
+        painter.drawPixmap(0, 0, glyph)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(tinted_glyph.rect(), button.palette().buttonText())
+        painter.end()
+        button.setIcon(QIcon(tinted_glyph))
+        button.setIconSize(icon_size)
+        button.setToolTip(f"{action} output preview")
+        button.setAccessibleName(f"{action} output preview")
+        if enabled is not None:
+            button.setEnabled(enabled)
 
     def set_output_format(self, output_format: str) -> None:
         """Show the selected format's optional control groups."""

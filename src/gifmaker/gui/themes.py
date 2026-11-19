@@ -9,8 +9,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
+
+# Global typography. None uses the system's fixed-width family and normal UI size.
+# Set APP_FONT_FAMILY to a family name (e.g. "Menlo") to choose a specific font.
+APP_FONT_FAMILY: str | None = None
+APP_FONT_SIZE: float | None = None  # Points, e.g. 13.0.
+SELECTION_TIME_FONT_SIZE = 9.0  # Smaller timestamps beneath timeline markers.
+
+
+def application_font() -> QFont:
+    """Use the timeline readout's fixed-width font throughout the application."""
+    font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    if APP_FONT_FAMILY is not None:
+        font.setFamily(APP_FONT_FAMILY)
+    size = APP_FONT_SIZE
+    if size is None:
+        size = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont).pointSizeF()
+    font.setPointSizeF(size)
+    return font
 
 
 @dataclass(frozen=True)
@@ -166,6 +184,7 @@ def apply_theme(application: QApplication, theme_name: str) -> str:
     name = theme_name if theme_name in THEMES else "light"
     theme = THEMES[name]
     application.setStyleSheet("")
+    application.setFont(application_font())
     # Restore the active Qt style's standard palette for the original native
     # light-grey look, rather than retaining dark colours after a switch.
     application.setPalette(theme.palette or application.style().standardPalette())

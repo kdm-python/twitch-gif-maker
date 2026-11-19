@@ -1,13 +1,43 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 from gifmaker.gui.main_window import MainWindow
+from gifmaker.gui.animation_preview_player import AnimationPreviewPlayer
+from gifmaker.gui.views.crop_overlay_label import CropOverlayLabel
+
+
+def test_cached_preview_follows_surface_resize_while_paused() -> None:
+    app = QApplication.instance() or QApplication([])
+    label = CropOverlayLabel()
+    label.setAlignment(Qt.AlignCenter)
+    original = QPixmap(800, 400)
+    original.fill()
+    window = SimpleNamespace(_preview_frame_cache=[original], _preview_frame_index=0)
+    player = AnimationPreviewPlayer(window)
+    player.bind(label)
+    label.resized.connect(player.update_scaled_size)
+    label.resize(200, 200)
+    label.show()
+    app.processEvents()
+    assert label.pixmap().width() == 200
+    assert label.pixmap().height() == 100
+    label.resize(600, 400)
+    app.processEvents()
+    assert label.pixmap().width() == 600
+    assert label.pixmap().height() == 300
+    label.resize(100, 100)
+    app.processEvents()
+    assert label.pixmap().width() == 100
+    assert label.pixmap().height() == 50
+    assert window._preview_frame_cache[0].width() == 800
+    label.close()
 
 
 def test_late_timer_skips_frames_and_keeps_timeline() -> None:

@@ -8,16 +8,18 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QComboBox,
+    QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
     QStyle,
     QVBoxLayout,
+    QWidget,
 )
 
+from gifmaker.gui.themes import SELECTION_TIME_FONT_SIZE
 from gifmaker.gui.views.marker_seek_slider import MarkerSeekSlider
 
 
@@ -92,13 +94,51 @@ class AnimationSurface(QLabel):
                                                Qt.TransformationMode.SmoothTransformation))
 
 
-class VideoPreviewPanel(QGroupBox):
-    """Panel containing the video preview and its playback controls.
+class SelectionTimeLabels(QWidget):
+    """Keep timestamps beneath their markers, staggering close boundaries."""
 
-    Selection controls are exposed as ``selection_group`` but are placed by the
-    main window beneath the shared preview area.  Keeping them out of this
-    panel lets the video canvas use the height it needs.
-    """
+    def __init__(self, slider: MarkerSeekSlider, parent=None) -> None:
+        super().__init__(parent)
+        self.slider = slider
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumWidth(100)
+        self.start_label = QLabel("--:--:--.---", self)
+        self.end_label = QLabel("--:--:--.---", self)
+        for label, name in ((self.start_label, "Start"), (self.end_label, "End")):
+            font = label.font()
+            font.setPointSizeF(SELECTION_TIME_FONT_SIZE)
+            label.setFont(font)
+            label.setToolTip(f"Selection {name.lower()} time")
+            label.setAccessibleName(f"Selection {name.lower()} time")
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        # Reserve two small lines so short selections never resize the player.
+        self.setFixedHeight(2 * self.start_label.sizeHint().height() + 2)
+        self.slider.selectionChanged.connect(self.update_positions)
+
+    def set_times(self, start: str, end: str) -> None:
+        self.start_label.setText(start)
+        self.end_label.setText(end)
+        self.update_positions()
+
+    def update_positions(self, *_args) -> None:
+        start, end = self.slider.selection()
+        labels = (self.start_label, self.end_label)
+        for label, frame in zip(labels, (start, end)):
+            label.adjustSize()
+            x = self.slider._frame_to_x(frame) - label.width() // 2
+            label.move(max(0, min(x, self.width() - label.width())), 0)
+        if self.start_label.geometry().adjusted(-3, 0, 3, 0).intersects(
+            self.end_label.geometry()
+        ):
+            self.end_label.move(self.end_label.x(), self.start_label.height() + 2)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.update_positions()
+
+
+class VideoPreviewPanel(QGroupBox):
+    """Panel containing the video preview, timeline and playback controls."""
 
     fileDropped = Signal(str)
 
@@ -123,7 +163,10 @@ class VideoPreviewPanel(QGroupBox):
         self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
 
-        controls_layout = QHBoxLayout()
+        self.controls_layout = QGridLayout()
+        controls_layout = self.controls_layout
+        controls_layout.setHorizontalSpacing(6)
+        controls_layout.setVerticalSpacing(0)
         self.play_button = QPushButton("▶ Play")
 
         self.playback_speed_combo = QComboBox()
@@ -134,72 +177,38 @@ class VideoPreviewPanel(QGroupBox):
         self.playback_speed_combo.addItem("2×", 2.0)
         self.playback_speed_combo.setCurrentIndex(2)
         self.playback_speed_combo.setFixedWidth(88)
+        self.playback_speed_combo.setToolTip("Video playback speed")
+        self.playback_speed_combo.setAccessibleName("Video playback speed")
 
         self.seek_slider = MarkerSeekSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 0)
         self.seek_slider.set_total_frames(0)
 
         self.seek_time_label = QLabel("00:00:00 / 00:00:00")
+        self.clip_selection_label = QLabel("Length: —")
+        for label, sample in (
+            (self.seek_time_label, "00:00:00 / 00:00:00"),
+            (self.clip_selection_label, "Length: 0000.000s"),
+        ):
+            label.setMinimumWidth(label.fontMetrics().horizontalAdvance(sample))
+        self.clip_selection_label.setToolTip("Selected source duration")
+        self.clip_selection_label.setAccessibleName("Selection length")
         self.mute_button = QPushButton()
         self.mute_button.setFixedWidth(34)
         self.update_mute_button(False)
 
-        controls_layout.addWidget(self.play_button)
-        controls_layout.addWidget(QLabel("Playback Speed"))
-        controls_layout.addWidget(self.playback_speed_combo)
-        controls_layout.addWidget(self.seek_slider, stretch=1)
-        controls_layout.addWidget(self.seek_time_label)
-        controls_layout.addWidget(self.mute_button)
+        controls_layout.addWidget(self.play_button, 0, 0)
+        controls_layout.addWidget(self.playback_speed_combo, 0, 1)
+        controls_layout.addWidget(self.seek_slider, 0, 2)
+        controls_layout.addWidget(self.seek_time_label, 0, 3)
+        controls_layout.addWidget(self.clip_selection_label, 0, 4)
+        controls_layout.addWidget(self.mute_button, 0, 5)
+        controls_layout.setColumnStretch(2, 1)
 
-        self.start_label = QLabel("Start")
-        self.start_frame_label = QLabel("--:--:--.---")
-        self.start_nudge_back_button = QPushButton("−0.01")
-        self.start_nudge_forward_button = QPushButton("+.01")
-        self.set_start_button = QPushButton("Set Start")
-
-        self.end_label = QLabel("End")
-        self.end_frame_label = QLabel("--:--:--.---")
-        self.end_nudge_back_button = QPushButton("−0.01")
-        self.end_nudge_forward_button = QPushButton("+.01")
-        self.set_end_button = QPushButton("Set End")
-
-        self.selection_group = QGroupBox("Selection")
-        self.selection_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.selection_group.setMaximumHeight(64)
-        selection_layout = QHBoxLayout(self.selection_group)
-        selection_layout.setContentsMargins(8, 4, 8, 4)
-        selection_layout.setSpacing(6)
-
-        self.clip_selection_label = QLabel("Selection: Not selected")
-        self.clip_selection_label.setStyleSheet("font-size: 10px;")
-
-        selection_layout.addWidget(self.start_label)
-        selection_layout.addWidget(self.start_frame_label)
-        selection_layout.addWidget(self.start_nudge_back_button)
-        selection_layout.addWidget(self.start_nudge_forward_button)
-        selection_layout.addWidget(self.set_start_button)
-        selection_layout.addSpacing(10)
-        selection_layout.addWidget(self.end_label)
-        selection_layout.addWidget(self.end_frame_label)
-        selection_layout.addWidget(self.end_nudge_back_button)
-        selection_layout.addWidget(self.end_nudge_forward_button)
-        selection_layout.addWidget(self.set_end_button)
-        selection_layout.addStretch(1)
-        selection_layout.addWidget(self.clip_selection_label)
-
-        selection_button_height = max(
-            self.play_button.sizeHint().height(), self.mute_button.sizeHint().height()
-        )
-        for button in (
-            self.start_nudge_back_button,
-            self.start_nudge_forward_button,
-            self.end_nudge_back_button,
-            self.end_nudge_forward_button,
-            self.set_start_button,
-            self.set_end_button,
-        ):
-            button.setFixedHeight(selection_button_height)
-            button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.selection_times = SelectionTimeLabels(self.seek_slider, self)
+        self.start_frame_label = self.selection_times.start_label
+        self.end_frame_label = self.selection_times.end_label
+        controls_layout.addWidget(self.selection_times, 1, 2)
 
         self.animation_widget = AnimationSurface(self)
         self.source_stack = QStackedWidget(self)
@@ -221,26 +230,11 @@ class VideoPreviewPanel(QGroupBox):
         self.playback_speed_combo.currentIndexChanged.connect(
             window.on_preview_playback_speed_changed
         )
-        self.set_start_button.clicked.connect(window.set_clip_start)
-        self.set_end_button.clicked.connect(window.set_clip_end)
 
         self.seek_slider.sliderPressed.connect(window.on_seek_slider_pressed)
         self.seek_slider.sliderMoved.connect(window.on_seek_slider_moved)
         self.seek_slider.sliderReleased.connect(window.on_seek_slider_released)
         self.seek_slider.selectionChanged.connect(window.on_scrub_selection_changed)
-
-        self.start_nudge_back_button.clicked.connect(
-            lambda: window.nudge_start_frame(-window._seconds_to_frame(0.01))
-        )
-        self.start_nudge_forward_button.clicked.connect(
-            lambda: window.nudge_start_frame(window._seconds_to_frame(0.01))
-        )
-        self.end_nudge_back_button.clicked.connect(
-            lambda: window.nudge_end_frame(-window._seconds_to_frame(0.01))
-        )
-        self.end_nudge_forward_button.clicked.connect(
-            lambda: window.nudge_end_frame(window._seconds_to_frame(0.01))
-        )
 
         self.mute_button.clicked.connect(window.toggle_mute)
         self.audio_output.mutedChanged.connect(self.update_mute_button)
