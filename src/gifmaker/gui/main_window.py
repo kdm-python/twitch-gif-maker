@@ -64,8 +64,7 @@ class RenderStatusLabel(QLabel):
 
     def setText(self, text: str) -> None:  # type: ignore[override]
         self._activity_indicator.set_running(
-            text.startswith("Status: Generating preview")
-            or text.startswith("Status: Exporting")
+            text.startswith(("Status: Generating preview", "Status: Exporting"))
         )
         super().setText(text)
 
@@ -126,7 +125,6 @@ class MainWindow(QMainWindow):
         self._pending_video_info: VideoInfo | None = None
         self._previous_video_path: str | None = None
         self._previous_source: QUrl | None = None
-        self._previous_file_info_text = "No file loaded"
         self._previous_meta_info_text = (
             "Duration: - | Resolution: - | FPS: - | Codec: -"
         )
@@ -212,7 +210,6 @@ class MainWindow(QMainWindow):
             grid.setColumnStretch(1, 1)
             for row, (key, description) in enumerate(shortcuts):
                 key_label = QLabel(key, group)
-                key_label.setStyleSheet("font-weight: 600;")
                 grid.addWidget(key_label, row, 0)
                 grid.addWidget(QLabel(description, group), row, 1)
             layout.addWidget(group)
@@ -350,7 +347,6 @@ class MainWindow(QMainWindow):
         info = QVBoxLayout()
         info.setContentsMargins(0, 0, 0, 0)
         info.setSpacing(2)
-        self.video_file_label = QLabel("No file loaded")
         self.video_meta_label = QLabel(
             "Duration: - | Resolution: - | FPS: - | Codec: -"
         )
@@ -374,13 +370,15 @@ class MainWindow(QMainWindow):
         status_layout.addWidget(self.render_activity_indicator)
         status_layout.addWidget(self.export_status_label)
         self.output_summary_label = QLabel("Output: Select a clip range")
-        row = QHBoxLayout()
-        row.addWidget(self.video_meta_label)
-        row.addWidget(self.render_status_frame)
-        row.addWidget(self.output_summary_label)
-        row.addStretch(1)
-        info.addWidget(self.video_file_label)
-        info.addLayout(row)
+        metadata_row = QHBoxLayout()
+        metadata_row.addWidget(self.video_meta_label)
+        metadata_row.addWidget(self.render_status_frame)
+        metadata_row.addStretch(1)
+        output_row = QHBoxLayout()
+        output_row.addWidget(self.output_summary_label)
+        output_row.addStretch(1)
+        info.addLayout(metadata_row)
+        info.addLayout(output_row)
         self.open_button = QPushButton("Open Video File")
         self.open_button.clicked.connect(self.open_file_dialog)
         self.clip_button = QPushButton("Open Twitch Clip")
@@ -442,7 +440,7 @@ class MainWindow(QMainWindow):
 
     def update_video_info(
         self,
-        file_path: str,
+        _file_path: str,
         *,
         duration: float,
         width: int,
@@ -451,7 +449,6 @@ class MainWindow(QMainWindow):
         codec: str,
     ) -> None:
         """Update the compact source-file metadata displayed in the footer."""
-        self.video_file_label.setText(file_path)
         self.video_meta_label.setText(
             f"Duration: {duration:.2f}s | Resolution: {width}x{height} | FPS: {fps:.2f} | Codec: {codec}"
         )

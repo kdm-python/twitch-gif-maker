@@ -12,10 +12,14 @@ from dataclasses import dataclass
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
-# Global typography. None uses the system's fixed-width family and normal UI size.
-# Set APP_FONT_FAMILY to a family name (e.g. "Menlo") to choose a specific font.
+# Global typography. Changes take effect at startup or when the theme is reapplied.
+# None uses the system fixed-width family; otherwise use an installed family name.
 APP_FONT_FAMILY: str | None = None
 APP_FONT_SIZE: float | None = None  # Points, e.g. 13.0.
+APP_FONT_WEIGHT = QFont.Weight.Normal
+# APP_FONT_FAMILY = "Menlo"
+# APP_FONT_SIZE = 10.0
+# APP_FONT_WEIGHT = QFont.Weight.Normal
 SELECTION_TIME_FONT_SIZE = 9.0  # Smaller timestamps beneath timeline markers.
 
 
@@ -26,8 +30,11 @@ def application_font() -> QFont:
         font.setFamily(APP_FONT_FAMILY)
     size = APP_FONT_SIZE
     if size is None:
-        size = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont).pointSizeF()
+        size = QFontDatabase.systemFont(
+            QFontDatabase.SystemFont.GeneralFont
+        ).pointSizeF()
     font.setPointSizeF(size)
+    font.setWeight(APP_FONT_WEIGHT)
     return font
 
 
@@ -80,7 +87,6 @@ QGroupBox {
     border-radius: 8px;
     margin-top: 12px;
     padding: 10px 8px 8px;
-    font-weight: 600;
 }
 QGroupBox::title {
     subcontrol-origin: margin;

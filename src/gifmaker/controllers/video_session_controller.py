@@ -293,7 +293,6 @@ class VideoSessionController:
         window._pending_video_info = video_info
         window._previous_video_path = previous_video_path
         window._previous_source = window.media_player.source()
-        window._previous_file_info_text = window.video_file_label.text()
         window._previous_meta_info_text = window.video_meta_label.text()
         window.media_player.stop()
         window.media_player.setSource(QUrl.fromLocalFile(file_path))
@@ -354,7 +353,6 @@ class VideoSessionController:
             return
         logger.error("Failed to load video preview.")
         window.current_video_path = window._previous_video_path
-        window.video_file_label.setText(window._previous_file_info_text)
         window.video_meta_label.setText(window._previous_meta_info_text)
         if window._previous_source is not None and not window._previous_source.isEmpty():
             window._restoring_previous_source = True
@@ -378,7 +376,6 @@ class VideoSessionController:
         window._pending_video_info = None
         window._previous_video_path = None
         window._previous_source = None
-        window._previous_file_info_text = "No file loaded"
         window._previous_meta_info_text = "Duration: - | Resolution: - | FPS: - | Codec: -"
 
     def toggle_preview_playback(self) -> None:

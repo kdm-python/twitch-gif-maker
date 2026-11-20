@@ -5,11 +5,12 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QProcess, QSettings, Qt
-from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QFont, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QGroupBox,
+    QLabel,
     QMessageBox,
     QSplitter,
     QTextBrowser,
@@ -417,6 +418,60 @@ def test_main_window_has_compact_player_controls_and_inline_selection_length() -
     assert window.quality_preset_combo.currentData() == "balanced"
     assert window.sharpness_combo.currentData() == "mild"
     assert not window.quality_preset_combo.isHidden()
+
+    app.quit()
+
+
+def test_footer_omits_source_path_and_places_output_on_its_own_row() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert not hasattr(window, "video_file_label")
+    info = window.output_summary_label.parentWidget().layout().itemAt(1).layout()
+    metadata = info.itemAt(0).layout()
+    output = info.itemAt(1).layout()
+    assert output.itemAt(0).widget() is window.output_summary_label
+    assert metadata.itemAt(0).widget() is window.video_meta_label
+    assert metadata.itemAt(1).widget() is window.render_status_frame
+
+    window.update_video_info(
+        "/var/folders/example/temp.mp4",
+        duration=3.5,
+        width=400,
+        height=300,
+        fps=24,
+        codec="h264",
+    )
+    assert all(
+        "/var/folders" not in label.text()
+        for label in window.centralWidget().findChildren(QLabel)
+    )
+    assert window.video_meta_label.text() == (
+        "Duration: 3.50s | Resolution: 400x300 | FPS: 24.00 | Codec: h264"
+    )
+    app.quit()
+
+
+def test_application_controls_share_one_global_font() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    for widget in (
+        window.preview_panel,
+        window.play_button,
+        window.playback_speed_combo,
+        window.output_fps_combo,
+        window.export_format_combo,
+        window.quality_preset_combo,
+        window.sharpness_combo,
+        window.export_width_input,
+        window.seek_time_label,
+        window.output_summary_label,
+        window.open_button,
+        window.export_button,
+    ):
+        assert widget.font().family() == window.preview_panel.font().family()
+        assert widget.font().weight() == QFont.Weight.Normal
 
     app.quit()
 
