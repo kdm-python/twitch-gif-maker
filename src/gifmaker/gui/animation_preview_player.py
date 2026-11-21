@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from bisect import bisect_right
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer
@@ -42,6 +43,30 @@ class AnimationPreviewPlayer:
                 position += max(1, reader.nextImageDelay())
             return position
         return 0
+
+    def seek(self, position_ms: int) -> None:
+        """Park at the frame covering an encoded timestamp, retaining pause."""
+        self.pause()
+        durations = self.window._preview_frame_durations
+        if self.window._preview_frame_cache and durations:
+            starts = []
+            elapsed = 0
+            for duration in durations:
+                starts.append(elapsed)
+                elapsed += duration
+            self.window._preview_frame_index = max(0, min(len(starts) - 1, bisect_right(starts, position_ms) - 1))
+            self._remaining_ms = None
+            self._display_cached_frame()
+        elif self.window._preview_movie is not None:
+            movie = self.window._preview_movie
+            reader = QImageReader(movie.fileName())
+            elapsed, index = 0, 0
+            while not reader.read().isNull():
+                elapsed += max(1, reader.nextImageDelay())
+                if elapsed > position_ms:
+                    break
+                index += 1
+            movie.jumpToFrame(min(index, max(0, movie.frameCount() - 1)))
 
     def _rendered_speed(self) -> float:
         """Return the speed baked into the currently cached preview."""

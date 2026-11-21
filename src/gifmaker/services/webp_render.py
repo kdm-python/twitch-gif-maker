@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+from dataclasses import asdict
 from fractions import Fraction
 from pathlib import Path
 
@@ -47,6 +48,7 @@ def prepare_job(source: LoadedSource, spec: RenderSpec):
             "crop": settings.crop,
             "sharpness": settings.sharpness_preset,
             "quality": settings.quality_preset,
+            "subtitles": asdict(spec.subtitles),
         }
         manifest_path = directory / "job.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -91,17 +93,33 @@ def render(manifest_path: Path) -> None:
         (sequence / f"frame-{index:08d}.png").symlink_to(frames[frame_index][0])
     output = manifest_path.parent / "result.webp"
     filters = _build_vf_filters(fps, job["width"], job["height"], job["crop"], 1.0, job["sharpness"])
+    if job.get("subtitles", {}).get("captions"):
+        from gifmaker.services.subtitle_render import compose_sequence
+
+        visual = manifest_path.parent / "visual"
+        visual.mkdir()
+        run_command([_ffmpeg_exe(), "-v", "error", "-y", "-framerate", str(fps),
+                     "-i", str(sequence / "frame-%08d.png"), "-frames:v", str(count),
+                     "-vf", filters, "-fps_mode", "passthrough", "-start_number", "0",
+                     str(visual / "frame-%08d.png")])
+        compose_sequence(manifest_path.parent, sorted(visual.glob("frame-*.png")), fps=fps,
+                         start_ms=start, speed=float(speed), subtitles=job["subtitles"], quality=job["quality"])
+        return
     quality = QUALITY_PRESETS[job["quality"]]
     command = [_ffmpeg_exe(), "-v", "error", "-y", "-framerate", str(fps),
                "-i", str(sequence / "frame-%08d.png"), "-frames:v", str(count),
                "-vf", filters, "-c:v", "libwebp_anim", "-quality", str(quality["webp_quality"]),
                "-preset", str(quality["webp_preset"]), "-loop", "0", "-an", str(output)]
     run_command(command)
+    ensure_animated(output, round(count * 1000 / fps))
+
+
+def ensure_animated(output: Path, duration_ms: int) -> None:
+    """Preserve duration when the encoder collapses identical frames to a still."""
     reader = QImageReader(str(output))
     if not reader.canRead():
         raise ValueError("FFmpeg produced an unreadable WebP")
     if not reader.supportsAnimation():
-        duration_ms = round(count * 1000 / fps)
         if duration_ms < 2 or duration_ms > 2 * 0xFFFFFF:
             raise ValueError("Animation duration cannot be represented by webpmux")
         mux = os.environ.get("GIFMAKER_WEBPMUX", "webpmux")
@@ -110,7 +128,7 @@ def render(manifest_path: Path) -> None:
             raise FileNotFoundError("webpmux is required for an unchanged animation; install it or set GIFMAKER_WEBPMUX")
         first = duration_ms // 2
         second = duration_ms - first
-        repaired = manifest_path.parent / "animated.webp"
+        repaired = output.with_name(f"{output.stem}-animated.webp")
         run_command([executable, "-frame", str(output), f"+{first}+0+0+1-b",
                      "-frame", str(output), f"+{second}+0+0+1-b", "-loop", "0",
                      "-bgcolor", "0,0,0,0", "-o", str(repaired)])

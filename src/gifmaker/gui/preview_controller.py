@@ -18,6 +18,7 @@ class PreviewPlayer(Protocol):
     def play(self) -> None: ...
     def pause(self) -> None: ...
     def position_ms(self) -> int: ...
+    def seek(self, position_ms: int) -> None: ...
     def clear(self) -> None: ...
     def set_playback_speed(self, speed: float) -> None: ...
     def update_scaled_size(self) -> None: ...
@@ -47,6 +48,9 @@ class PreviewController:
         """Return the encoded timestamp of the displayed preview frame."""
         return self.player.position_ms()
 
+    def seek(self, position_ms: int) -> None:
+        self.player.seek(position_ms)
+
     def set_playback_speed(self, speed: float) -> None:
         if speed > 0:
             self._playback_speed = speed
@@ -57,13 +61,17 @@ class PreviewController:
 
     def clear(self, *, remove_temp_file: bool) -> None:
         preview_file = self.window._preview_temp_file
+        clean_file = getattr(self.window, "_preview_clean_file", None)
         self.player.clear()
         self.window._preview_temp_file = None
+        self.window._preview_clean_file = None
         self.window._last_preview_settings = None
         self.window._last_preview_source = None
         self.window._last_preview_spec = None
         if remove_temp_file and preview_file is not None:
             self.remove_temp_file_if_exists(preview_file)
+        if remove_temp_file and clean_file is not None:
+            self.remove_temp_file_if_exists(clean_file)
 
     @staticmethod
     def remove_temp_file_if_exists(file_path: Path) -> None:

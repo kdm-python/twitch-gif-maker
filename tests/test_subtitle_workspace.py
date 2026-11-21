@@ -1,5 +1,7 @@
 """Exercise the modal boundary with real Qt playback and variable-delay WebP."""
 import os
+import shutil
+import tempfile
 import time
 from concurrent.futures import Future
 from pathlib import Path
@@ -32,8 +34,11 @@ def preview_window():
     window.current_video_path = str(FIXTURE)
     window._last_preview_spec = RenderSpec(str(FIXTURE), "WebP", settings)
     window._last_preview_settings = settings
-    window._preview_temp_file = FIXTURE  # Borrowed fixture: detach before closing.
-    window.preview_controller.load(FIXTURE)
+    descriptor, name = tempfile.mkstemp(prefix="gifmaker-test-preview-", suffix=".webp")
+    os.close(descriptor)
+    window._preview_temp_file = Path(name)
+    shutil.copyfile(FIXTURE, name)
+    window.preview_controller.load(Path(name))
     window.pause_gif_preview()
     window._preview_frame_index = 1
     window.preview_controller.update_scaled_size()
@@ -44,7 +49,6 @@ def preview_window():
 def dispose(window):
     if window.subtitle_controller.dialog is not None:
         window.subtitle_controller.dialog.close()
-    window._preview_temp_file = None
     window.close()
 
 
@@ -190,6 +194,7 @@ def test_open_suspends_pending_render_and_leaves_artifact_pinned():
     window = preview_window()
     try:
         render = window.render_controller
+        original_preview = window._preview_temp_file
         render._preview_debounce.start(1000)
         with patch.object(render, "_cancel_preview_job") as cancel:
             window.open_subtitles()
@@ -201,7 +206,7 @@ def test_open_suspends_pending_render_and_leaves_artifact_pinned():
         render._schedule_preview_refresh()
         assert not render._preview_debounce.isActive()
         window.subtitle_controller.dialog.close()
-        assert window._preview_temp_file == FIXTURE
+        assert window._preview_temp_file == original_preview
         assert not render._preview_debounce.isActive()
         app.processEvents()
     finally:

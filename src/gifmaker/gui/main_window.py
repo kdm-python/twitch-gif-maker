@@ -134,6 +134,7 @@ class MainWindow(QMainWindow):
         self._current_crop: tuple[int, int, int, int] | None = None
         self._current_video_info: VideoInfo | None = None
         self._preview_temp_file: Path | None = None
+        self._preview_clean_file: Path | None = None
         self._preview_movie: QMovie | None = None
         self._preview_frame_cache: list[QPixmap] | None = None
         self._preview_frame_durations: list[int] | None = None

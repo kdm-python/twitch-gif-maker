@@ -123,7 +123,7 @@ The main window is intentionally a composition root. It creates panels, exposes 
 
 ## Future work and extension points
 
-### Subtitle workspace: stage one
+### Subtitle workspace and rendering
 
 The Subtitles button or S opens an application-modal playback workspace for the
 currently generated WebP output preview. `SubtitleController` pauses both main
@@ -131,8 +131,9 @@ players, suspends preview generation, disables main shortcuts and menus, and
 hands the displayed output frame's timestamp to `SubtitleDialog`. Closing the
 window, pressing L, or clicking Return restores interaction while retaining the
 original paused output frame and the user's preview-lock setting. Pending
-preview renders are cancelled; a stale preview stays pinned until the next edit
-or explicit generation rather than replacing the frame on return.
+preview renders are cancelled. Applying changed captions renders the frozen
+preview recipe, then restores the original output timestamp in the new result,
+paused. Closing without changes retains the existing artifact.
 
 The dialog snapshots the encoded input and prepares it on a worker thread using
 the existing WebP loader. It owns an `AnimationSourcePlayer`,
@@ -143,10 +144,58 @@ playback rate. Mouse seeking and marker dragging use the existing slider.
 Preparation failures appear in the workspace and are logged. Closing during
 preparation collects and closes any late source without blocking the GUI.
 
-This stage does not add text or alter exports. The next stages will add one
-editable caption initially, using a collection-ready model and source-relative
-timing displayed on the output timeline, followed by shared preview/export
-composition and immutable render-recipe integration.
+Stage two adds one editable caption, initially an empty text item with a bottom
+centre editing placeholder. Click the text to edit it on the canvas, or use the
+text field; drag to move it. The controls offer installed common fonts, white,
+black and grey, relative size, bold and italic, and bottom-centre reset. Enter
+finishes text entry and restores playback shortcuts. Clicking outside a text or
+size entry, including blank canvas, buttons and dropdowns, also releases input
+focus without consuming the click. Shortcut letters are normal
+text while either text editor or the size field has focus. Text interaction
+pauses playback, and long text is fitted within the canvas.
+
+`models.subtitles` contains immutable captions in a collection-ready document.
+Caption start/end use source milliseconds; positions and font size are relative
+to the final output canvas. `SubtitleTiming` maps the displayed preview recipe's
+trim and speed into source moments, independently of newer unsaved main controls.
+The controller retains the document when the modal closes and passes it back on
+reopen. Successful source replacement clears the document; failed loading does
+not. This is in-memory editing state, not persistence across application restarts.
+
+Reopening after trim/speed changes retains original source intervals and shows
+frame-snapped markers on the new output timeline. Partially or fully trimmed-out
+captions are indicated, without rewriting their saved timing. Adjusting markers
+explicitly assigns a new source interval. Text visibility is start-inclusive and
+end-exclusive, evaluated at the displayed animation frame's timestamp.
+
+`services.subtitle_compositor` paints captions into a copy of a full-resolution
+QImage, preserving alpha and leaving decoded inputs intact. It uses Qt's font and
+path drawing and no widgets, shared by the editor and rendering workers.
+`SubtitleSurface` handles canvas hit testing, inline editing, letterbox-aware
+dragging and display scaling. Placeholders are editing aids, never caption text.
+
+`RenderSpec.subtitles` contains the immutable render document, excluding empty
+editing placeholders. Recipe equality includes text, timing, placement and style,
+so cached previews can only be exported when all caption data matches. Captions
+remain part of subsequent trim, speed, crop, size and quality renders.
+
+For captioned WebP sources, the existing worker samples the prepared source and
+uses FFmpeg to crop, scale and sharpen a lossless PNG sequence. For captioned
+MP4 sources, `services.subtitle_render` prepares the same visual PNG sequence
+using the normal timing/visual filters. Both routes draw captions at each output
+frame's source timestamp using the shared compositor, then encode the final
+WebP (or GIF for MP4 input). The Qt font renderer runs in an offscreen worker
+process. Cancellation terminates its active FFmpeg child and cleans intermediates.
+The direct FFmpeg route remains available for recipes without captions.
+
+Captioned preview jobs also produce a lossless uncaptioned `clean.webp`. The
+main controller adopts this backing file only alongside a successful current
+preview. The modal opens this clean input on subsequent visits, preventing
+duplicate burned text or repeated lossy editing. Its prepared clean pixels are
+aligned to the rendered output's actual frame boundaries, because an encoder can
+merge identical clean frames. Preview replacement or session cleanup releases
+the backing file; export jobs use the same compositor and recipe. Worker failure
+keeps the old preview/backing and retains editable caption data for retry.
 
 A new source format usually needs three decisions.
 
@@ -156,7 +205,10 @@ A new source format usually needs three decisions.
 
 MP3 would use the direct-file path but needs an audio player, audio-only timeline and an output-format definition with audio settings rather than visual controls. It does not need the prepared-frame renderer.
 
-Subtitles fit naturally as a future visual render layer. They should become immutable subtitle data in `RenderSpec`, expressed in source-time coordinates. The WebP sampler already maps each output frame back to a source timestamp, providing the correct input for deciding which caption is visible. Subtitle drawing should occur after crop and scale decisions have been made, in a shared visual composition stage used by both preview and export. That preserves preview/export identity and permits MP4 and WebP sources to share subtitle logic.
+Future visual tools can follow the subtitle layer: immutable operation data in
+the render recipe, composition after crop and scale, and shared preview/export
+behavior. The existing subtitle editor still exposes one caption; its document
+and compositor support a collection for later expansion.
 
 The main remaining operational concern is resource policy. Decoding WebP creates one full RGBA PNG per source frame, and rendering creates a short-lived workspace. This is acceptable for the intended short clips, but a future release should calculate estimated decoded storage, set a configurable ceiling, and explain rejection before writing an unusually large temporary sequence.
 

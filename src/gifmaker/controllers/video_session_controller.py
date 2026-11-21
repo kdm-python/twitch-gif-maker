@@ -227,6 +227,7 @@ class VideoSessionController:
             self._animation_error(str(exc))
             return
         window.render_controller.clear_preview_state(remove_temp_file=True)
+        window.subtitle_controller.reset()
         self._release_animation()
         window.media_player.stop()
         self._clear_pending_preview_state()
@@ -338,6 +339,7 @@ class VideoSessionController:
         window.media_player.pause()
         self.reset_clip_selection()
         window.render_controller.clear_preview_state(remove_temp_file=True)
+        window.subtitle_controller.reset()
         window._current_video_info = window._pending_video_info
         window._current_crop = None
         window.gif_preview_label.clear_crop()

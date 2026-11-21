@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Self
@@ -63,6 +63,24 @@ class LoadedSource:
             if self._temporary_directory is not None:
                 self._temporary_directory.cleanup()
                 self._temporary_directory = None
+
+    def align_timing(self, reference: LoadedSource) -> None:
+        """Retain owned pixels while adopting another animation's boundaries.
+
+        Used by the subtitle editor when identical clean backing frames were
+        merged by the encoder. No reference frame paths are borrowed.
+        """
+        if self.closed or reference.closed or not self.frames or not reference.frames:
+            raise ValueError("Live animations are required to align timing")
+        if (self.info.width, self.info.height) != (reference.info.width, reference.info.height):
+            raise ValueError("Clean backing dimensions do not match the output")
+        duration = self.frames[-1].start_ms + self.frames[-1].duration_ms
+        frames = tuple(SourceFrame(self.frame_at(min(frame.start_ms, duration)).path,
+                                   frame.start_ms, frame.duration_ms) for frame in reference.frames)
+        self.frames = frames
+        self._starts = tuple(frame.start_ms for frame in frames)
+        self.info = replace(self.info, duration_seconds=reference.info.duration_seconds,
+                            average_fps=reference.info.average_fps)
 
     def __enter__(self) -> Self:
         if self._closed:

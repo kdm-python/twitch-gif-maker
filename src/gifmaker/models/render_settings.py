@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from gifmaker.models.subtitles import SubtitleDocument
 
 
 @dataclass(frozen=True)
@@ -150,6 +152,7 @@ class RenderSpec:
     source_path: str
     output_format: str
     settings: RenderSettings
+    subtitles: SubtitleDocument = field(default_factory=SubtitleDocument)
 
 
 def parse_time_input(value: str) -> float:

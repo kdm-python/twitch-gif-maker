@@ -33,6 +33,7 @@ class _RenderProcessJob:
     destination: Path
     revision: int | None = None
     workspace: tempfile.TemporaryDirectory | None = None
+    restore_position_ms: int | None = None
 
 
 class RenderController:
@@ -71,6 +72,7 @@ class RenderController:
             source_path=window.current_video_path,
             output_format=output_format or window.export_format_combo.currentText(),
             settings=self._resolve_render_settings(output_format=output_format),
+            subtitles=window.subtitle_controller.render_document(),
         )
 
     def on_output_format_changed(self, _value=None) -> None:
@@ -337,7 +339,7 @@ class RenderController:
             if source is not None:
                 workspace, command = prepare_job(source, spec)
             else:
-                command = self.render_service.build_command(spec, destination)
+                workspace, command = self.render_service.prepare_job(spec, destination)
         except Exception as exc:  # noqa: BLE001 - report preparation failures without closing the application
             logger.error("Export preparation failed: {}", exc)
             window.export_status_label.setText(f"Status: Export failed: {exc}")
@@ -351,7 +353,7 @@ class RenderController:
             on_finished=self._on_export_finished,
         )
 
-    def generate_gif_preview(self) -> None:
+    def generate_gif_preview(self, *, spec: RenderSpec | None = None, restore_position_ms: int | None = None) -> None:
         """Render a temporary preview in the selected output format."""
         if self._preview_suspended:
             return
@@ -361,7 +363,7 @@ class RenderController:
             window.export_status_label.setText("Status: Load a video first.")
             return
         try:
-            spec = self._resolve_render_spec()
+            spec = spec or self._resolve_render_spec()
         except ValueError as exc:
             window.export_status_label.setText(f"Status: {exc}")
             return
@@ -383,7 +385,7 @@ class RenderController:
             if source is not None:
                 workspace, command = prepare_job(source, spec)
             else:
-                command = self.render_service.build_command(spec, temporary_file)
+                workspace, command = self.render_service.prepare_job(spec, temporary_file)
         except Exception as exc:  # noqa: BLE001 - report preparation failures without closing the application
             self.remove_temp_file_if_exists(temporary_file)
             logger.error("Preview generation failed: {}", exc)
@@ -397,6 +399,7 @@ class RenderController:
             revision=window._render_revision,
             on_finished=self._on_preview_finished,
         )
+        self._preview_job.restore_position_ms = restore_position_ms
 
     def _start_process(
         self,
@@ -450,13 +453,22 @@ class RenderController:
         if is_current_job:
             self._preview_job = None
         is_current_revision = job.revision == self.window._render_revision
+        new_clean = None
         if is_current_job and is_current_revision and exit_code == 0 and job.workspace is not None:
             try:
-                self._atomic_copy(Path(job.workspace.name) / "result.webp", job.destination)
+                self._atomic_copy(Path(job.workspace.name) / f"result{job.destination.suffix.lower()}", job.destination)
+                clean = Path(job.workspace.name) / "clean.webp"
+                if clean.is_file():
+                    descriptor, name = tempfile.mkstemp(prefix="gifmaker-clean-", suffix=".webp")
+                    os.close(descriptor)
+                    new_clean = Path(name)
+                    self._atomic_copy(clean, new_clean)
             except (OSError, ValueError) as exc:
                 logger.error("Preview finalization failed: {}", exc)
                 self.window.export_status_label.setText(f"Status: Preview failed: {exc}")
                 self.remove_temp_file_if_exists(job.destination)
+                if new_clean is not None:
+                    self.remove_temp_file_if_exists(new_clean)
                 self._cleanup_workspace(job)
                 return
         self._cleanup_workspace(job)
@@ -480,13 +492,19 @@ class RenderController:
             self.window._last_preview_settings = previous_settings
             self.window.preview_controller.set_playback_speed(previous_speed)
             self.remove_temp_file_if_exists(job.destination)
+            if new_clean is not None:
+                self.remove_temp_file_if_exists(new_clean)
             self.window.export_status_label.setText(f"Status: Preview failed: {exc}")
             return
 
-        self.window.export_controls_panel.set_preview_playing(True, enabled=True)
+        if job.restore_position_ms is not None:
+            self.window.preview_controller.seek(job.restore_position_ms)
+        self.window.export_controls_panel.set_preview_playing(job.restore_position_ms is None, enabled=True)
 
         window = self.window
         previous_file = window._preview_temp_file
+        previous_clean = window._preview_clean_file
+        window._preview_clean_file = new_clean
         window._preview_temp_file = job.destination
         window._last_preview_settings = job.spec.settings
         window._last_preview_source = job.spec.source_path
@@ -494,6 +512,8 @@ class RenderController:
         window.gif_preview_label.set_coordinate_space(job.spec.settings.crop)
         if previous_file and previous_file != job.destination:
             self.remove_temp_file_if_exists(previous_file)
+        if previous_clean is not None:
+            self.remove_temp_file_if_exists(previous_clean)
         self.update_output_summary()
         window.export_status_label.setText("Status: Preview ready. Click Export to save.")
 
@@ -508,7 +528,7 @@ class RenderController:
         if exit_code == 0 and job.workspace is not None:
             try:
                 self._check_destination(job.destination, job.spec)
-                self._atomic_copy(Path(job.workspace.name) / "result.webp", job.destination)
+                self._atomic_copy(Path(job.workspace.name) / f"result{job.destination.suffix.lower()}", job.destination)
             except (OSError, ValueError) as exc:
                 logger.error("Export finalization failed: {}", exc)
                 self.window.export_status_label.setText(f"Status: Export failed: {exc}")
