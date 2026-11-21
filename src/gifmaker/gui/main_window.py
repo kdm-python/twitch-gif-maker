@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
 )
 
 from gifmaker.controllers.render_controller import RenderController
+from gifmaker.controllers.subtitle_controller import SubtitleController
 from gifmaker.controllers.video_session_controller import VideoSessionController
 from gifmaker.gui.preview_controller import PreviewController
 from gifmaker.gui.shortcut_manager import SHORTCUT_HELP, ShortcutManager
@@ -96,6 +97,7 @@ class MainWindow(QMainWindow):
         self.preview_controller = PreviewController(self)
         self.video_session_controller = VideoSessionController(self)
         self.render_controller = RenderController(self)
+        self.subtitle_controller = SubtitleController(self)
 
         self.setWindowTitle("GIF Maker")
         self._theme_settings = QSettings("T10Nat", "GIF Maker")
@@ -385,6 +387,8 @@ class MainWindow(QMainWindow):
         self.clip_button.clicked.connect(self.open_clip_dialog)
         self.export_button = QPushButton("Export")
         self.export_button.clicked.connect(self.export_gif_from_selection)
+        self.subtitle_button = QPushButton("Subtitles (S)")
+        self.subtitle_button.clicked.connect(self.open_subtitles)
         self.preview_lock_button = QPushButton()
         self.preview_lock_button.setCheckable(True)
         self.preview_lock_button.setFixedWidth(34)
@@ -395,7 +399,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.open_button)
         layout.addWidget(self.clip_button)
         layout.addWidget(self.export_button)
+        layout.addWidget(self.subtitle_button)
         return toolbar
+
+    def open_subtitles(self) -> None:
+        self.subtitle_controller.open()
 
     def _set_preview_locked(self, locked: bool) -> None:
         self._update_preview_lock_button(locked)
@@ -460,6 +468,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Release temporary preview assets when the application closes."""
+        if self.subtitle_controller.dialog is not None:
+            self.subtitle_controller.dialog.close()
         self.render_controller.cancel_active_renders()
         self.render_controller.clear_preview_state(remove_temp_file=True)
         self.media_player.stop()

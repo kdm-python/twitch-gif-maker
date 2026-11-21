@@ -23,6 +23,7 @@ Keyboard mappings:
 - Output preview controls
     - Shift+G: Generate an output preview
     - p: Toggle output preview playback
+    - s: Open subtitle workspace for a generated WebP preview
     - a: Apply the current crop to the output preview
     - r: Reset the crop on the output preview
     - [: Decrease output speed
@@ -85,6 +86,7 @@ SHORTCUT_HELP: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         (
             ("Shift+G", "Generate an output preview"),
             ("P", "Toggle output preview playback"),
+            ("S", "Open subtitle workspace (WebP preview)"),
             ("A", "Apply the current crop to the output preview"),
             ("R", "Reset the crop on the output preview"),
             ("[", "Decrease output speed"),
@@ -107,6 +109,7 @@ class ShortcutManager:
         self._register("right", Qt.Key.Key_Right, window._shortcut_right)
         self._register("play_pause", Qt.Key.Key_Space, window._shortcut_play_pause)
         self._register("toggle_mute", Qt.Key.Key_M, window._shortcut_toggle_mute)
+        self._register("subtitles", Qt.Key.Key_S, window.open_subtitles).setAutoRepeat(False)
         self._register("speed_down", Qt.Key.Key_Comma, window._shortcut_speed_down)
         self._register("speed_up", Qt.Key.Key_Period, window._shortcut_speed_up)
 

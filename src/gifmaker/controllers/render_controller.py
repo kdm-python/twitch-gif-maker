@@ -43,6 +43,7 @@ class RenderController:
         self.render_service = RenderService()
         self._preview_job: _RenderProcessJob | None = None
         self.preview_locked = False
+        self._preview_suspended = False
         self._refresh_after_unlock = False
         self._export_job: _RenderProcessJob | None = None
         self._preview_debounce = QTimer(window)
@@ -101,6 +102,19 @@ class RenderController:
             self._schedule_preview_refresh()
         else:
             self._show_preview_stale_state()
+
+    def suspend_preview(self) -> None:
+        """Pin the displayed artifact without changing the user's lock setting."""
+        self._preview_suspended = True
+        self._preview_debounce.stop()
+        self._cancel_preview_job()
+        self.window.export_status_label.setText("Status: Subtitle workspace open.")
+
+    def resume_preview(self) -> None:
+        """Restore normal updates; keep the pinned frame until the next edit."""
+        self._preview_suspended = False
+        self.window.export_status_label.setText("Status: Preview ready. Click Export to save.")
+        self._show_preview_stale_state()
 
     def set_preview_locked(self, locked: bool) -> None:
         """Switch between automatic and explicitly requested preview updates."""
@@ -163,7 +177,7 @@ class RenderController:
 
     def _schedule_preview_refresh(self) -> None:
         """Coalesce rapid control changes into one current-revision preview job."""
-        if self.window.current_video_path is None:
+        if self._preview_suspended or self.window.current_video_path is None:
             return
         self.window.export_status_label.setText("Status: Updating preview...")
         self._preview_debounce.start(200)
@@ -339,6 +353,8 @@ class RenderController:
 
     def generate_gif_preview(self) -> None:
         """Render a temporary preview in the selected output format."""
+        if self._preview_suspended:
+            return
         window = self.window
         self._preview_debounce.stop()
         if window.current_video_path is None:

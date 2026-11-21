@@ -28,6 +28,21 @@ class AnimationPreviewPlayer:
         """Attach the label that renders the generated preview."""
         self.preview_label = preview_label
 
+    def position_ms(self) -> int:
+        """Encoded timeline position of the currently displayed output frame."""
+        if self.window._preview_frame_cache:
+            return sum(self.window._preview_frame_durations[:self.window._preview_frame_index])
+        movie = self.window._preview_movie
+        if movie is not None:
+            reader = QImageReader(movie.fileName())
+            position = 0
+            for _ in range(max(0, movie.currentFrameNumber())):
+                if reader.read().isNull():
+                    break
+                position += max(1, reader.nextImageDelay())
+            return position
+        return 0
+
     def _rendered_speed(self) -> float:
         """Return the speed baked into the currently cached preview."""
         settings = self.window._last_preview_settings
@@ -322,6 +337,8 @@ class AnimationPreviewPlayer:
 
             def _restart(m=movie):
                 try:
+                    if m is not self.window._preview_movie or m.state() != QMovie.MovieState.Running:
+                        return
                     m.jumpToFrame(0)
                     m.start()
                 except Exception:

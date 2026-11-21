@@ -123,6 +123,31 @@ The main window is intentionally a composition root. It creates panels, exposes 
 
 ## Future work and extension points
 
+### Subtitle workspace: stage one
+
+The Subtitles button or S opens an application-modal playback workspace for the
+currently generated WebP output preview. `SubtitleController` pauses both main
+players, suspends preview generation, disables main shortcuts and menus, and
+hands the displayed output frame's timestamp to `SubtitleDialog`. Closing the
+window, pressing L, or clicking Return restores interaction while retaining the
+original paused output frame and the user's preview-lock setting. Pending
+preview renders are cancelled; a stale preview stays pinned until the next edit
+or explicit generation rather than replacing the frame on return.
+
+The dialog snapshots the encoded input and prepares it on a worker thread using
+the existing WebP loader. It owns an `AnimationSourcePlayer`,
+`AnimationTimelineController`, `MarkerSeekSlider`, and scaled animation surface.
+Arrow keys step frames; C/Z/X and V/B/N set and adjust visibility boundaries;
+Space and P toggle playback; comma/period and the speed selector change preview
+playback rate. Mouse seeking and marker dragging use the existing slider.
+Preparation failures appear in the workspace and are logged. Closing during
+preparation collects and closes any late source without blocking the GUI.
+
+This stage does not add text or alter exports. The next stages will add one
+editable caption initially, using a collection-ready model and source-relative
+timing displayed on the output timeline, followed by shared preview/export
+composition and immutable render-recipe integration.
+
 A new source format usually needs three decisions.
 
 1. Add a loader that returns `LoadedSource` or extend the source model where a different representation is required.

@@ -50,6 +50,7 @@ class VideoSessionController:
         self._animation_player = None
         self._previous_format = None
         self._load_generation = 0
+        self._load_future = None
         self._closing = False
         self._load_lock = Lock()
         self._pending_sources = set()
@@ -108,6 +109,7 @@ class VideoSessionController:
                 source.close()
             self._pending_sources.clear()
         self._load_generation += 1
+        self._load_future = None
         self._executor.shutdown(wait=True, cancel_futures=False)
         self._release_animation()
         if self._clip_process is not None:
@@ -142,6 +144,7 @@ class VideoSessionController:
 
         source = Path(file_path)
         self._load_generation += 1
+        self._load_future = None
         if source.suffix.lower() not in (".mp4", ".webp"):
             QMessageBox.warning(
                 self.window,
@@ -162,6 +165,7 @@ class VideoSessionController:
             generation = self._load_generation
             self.window.export_status_label.setText("Status: Loading animation...")
             future = self._executor.submit(load_source, selected_path)
+            self._load_future = future
             future.add_done_callback(lambda result: self._load_finished(generation, result))
             return
         previous_path = self.window.current_video_path
@@ -194,6 +198,8 @@ class VideoSessionController:
             self._load_signals.completed.emit(generation, source, error)
 
     def _animation_loaded(self, generation, source, error) -> None:
+        if generation == self._load_generation:
+            self._load_future = None
         with self._load_lock:
             self._pending_sources.discard(source)
         if self._closing or generation != self._load_generation:
