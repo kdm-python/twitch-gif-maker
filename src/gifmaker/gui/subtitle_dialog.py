@@ -33,6 +33,25 @@ from gifmaker.models.subtitles import Caption, SubtitleDocument, SubtitleTiming
 from gifmaker.sources.animation_player import AnimationSourcePlayer
 from gifmaker.sources.loader import load_source
 
+FONT_CHOICES = (
+    "American Typewriter", "Arial", "Chalkboard", "Comic Sans MS", "Copperplate",
+    "Courier New", "DejaVu Sans", "Helvetica", "Herculanum", "Impact", "Marker Felt",
+    "Noteworthy", "Old English Text MT", "Papyrus", "Times New Roman", "Verdana",
+)
+
+COLOUR_CHOICES = (
+    ("White", "#ffffff"),
+    ("Black", "#000000"),
+    ("Grey", "#808080"),
+    ("Gold", "#ffd700"),
+    ("Silver", "#c0c0c0"),
+    ("Blue", "#1e90ff"),
+    ("Crimson", "#dc143c"),
+    ("Lime", "#32cd32"),
+    ("Purple", "#a855f7"),
+    ("Yellow", "#ffff00"),
+)
+
 
 def _prepare_snapshot(path: Path, workspace: TemporaryDirectory, timeline_path: Path | None = None):
     source = None
@@ -112,7 +131,8 @@ class SubtitleDialog(QDialog):
         close_button.clicked.connect(self.accept)
         row.addWidget(close_button)
         layout.addLayout(row)
-        help_label = QLabel("←/→ Step frame · C/Z/X Start · V/B/N End · Space/P Play/pause")
+        help_label = QLabel("←/→ Step frame · C/Z/X Start · V/B/N End · Space/P Play/pause · "
+                            "F Font · W Colour · [/] Size +/- · E Bold · R Italic")
         help_label.setWordWrap(True)
         layout.addWidget(help_label)
         layout.addWidget(QLabel("Close or press L to apply captions to the preview and export."))
@@ -135,6 +155,12 @@ class SubtitleDialog(QDialog):
             "P": self.toggle_playback,
             ",": lambda: self._step_speed(-1),
             ".": lambda: self._step_speed(1),
+            "F": lambda: self._cycle_combo(self.font_combo),
+            "W": lambda: self._cycle_combo(self.color_combo),
+            "[": lambda: self._step_font_size(1),
+            "]": lambda: self._step_font_size(-1),
+            "E": self.bold_button.toggle,
+            "R": self.italic_button.toggle,
         }
         self.shortcuts = []
         for key, callback in bindings.items():
@@ -248,8 +274,7 @@ class SubtitleDialog(QDialog):
         self.font_combo = QComboBox()
         available = set(QFontDatabase.families())
         default = QFontDatabase.systemFont(QFontDatabase.GeneralFont).family()
-        for family in dict.fromkeys([default, "Arial", "Helvetica", "Verdana", "Times New Roman",
-                                     "Courier New", "DejaVu Sans"]):
+        for family in sorted(set(FONT_CHOICES) | {default}, key=str.casefold):
             if family in available or family == default:
                 self.font_combo.addItem(family)
         self.font_combo.setAccessibleName("Caption font")
@@ -257,7 +282,7 @@ class SubtitleDialog(QDialog):
         style.addWidget(QLabel("Font"))
         style.addWidget(self.font_combo)
         self.color_combo = QComboBox()
-        for name, color in (("White", "#ffffff"), ("Black", "#000000"), ("Grey", "#808080")):
+        for name, color in COLOUR_CHOICES:
             self.color_combo.addItem(name, color)
         self.color_combo.setAccessibleName("Caption colour")
         self.color_combo.currentIndexChanged.connect(lambda: self._edit_caption(color=self.color_combo.currentData()))
@@ -363,6 +388,14 @@ class SubtitleDialog(QDialog):
         self.speed_combo.setCurrentIndex(
             max(0, min(self.speed_combo.count() - 1, self.speed_combo.currentIndex() + delta))
         )
+
+    @staticmethod
+    def _cycle_combo(combo):
+        if combo.count():
+            combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())
+
+    def _step_font_size(self, direction):
+        self.size_spin.setValue(self.size_spin.value() + direction * self.size_spin.singleStep())
 
     def _error(self, message):
         self._has_error = True

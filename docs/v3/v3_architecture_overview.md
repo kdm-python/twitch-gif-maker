@@ -146,8 +146,11 @@ preparation collects and closes any late source without blocking the GUI.
 
 Stage two adds one editable caption, initially an empty text item with a bottom
 centre editing placeholder. Click the text to edit it on the canvas, or use the
-text field; drag to move it. The controls offer installed common fonts, white,
-black and grey, relative size, bold and italic, and bottom-centre reset. Enter
+text field; drag to move it. The controls offer an alphabetized selection of
+installed common, comic, display and gothic fonts, a curated colour palette,
+relative size, bold and italic, and bottom-centre reset. F and W cycle fonts and
+colours; left/right square brackets increase/decrease size respectively; E and R
+toggle bold and italic. Enter
 finishes text entry and restores playback shortcuts. Clicking outside a text or
 size entry, including blank canvas, buttons and dropdowns, also releases input
 focus without consuming the click. Shortcut letters are normal

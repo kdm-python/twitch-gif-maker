@@ -6,10 +6,11 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QFontDatabase, QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from gifmaker.gui.subtitle_dialog import COLOUR_CHOICES, FONT_CHOICES
 from gifmaker.models.render_settings import RenderSettings, RenderSpec
 from gifmaker.models.subtitles import Caption, SubtitleDocument, SubtitleTiming
 from gifmaker.services.subtitle_compositor import caption_path, compose_subtitles
@@ -70,9 +71,10 @@ def test_typing_shortcut_letters_and_inline_click_editing():
         original_selection = dialog.slider.selection()
         dialog.text_input.setFocus()
         app.processEvents()
-        QTest.keyClicks(dialog.text_input, "l s c z x v b n p . , text")
+        QTest.keyClicks(dialog.text_input, "l s c z x v b n p f w e r [ ] . , text")
         assert dialog.isVisible()
-        assert dialog.document.captions[0].text == "l s c z x v b n p . , text"
+        assert dialog.document.captions[0].text == "l s c z x v b n p f w e r [ ] . , text"
+        assert not dialog.bold_button.isChecked() and not dialog.italic_button.isChecked()
         assert dialog.slider.selection() == original_selection
         assert not dialog.player.playing
         assert not any(shortcut.isEnabled() for shortcut in dialog.shortcuts)
@@ -93,6 +95,59 @@ def test_typing_shortcut_letters_and_inline_click_editing():
         QTest.keyClick(dialog, Qt.Key_L)
         assert window.subtitle_controller.dialog is None
         assert window.subtitle_controller.document.captions[0].text == "Click edit l"
+    finally:
+        dispose(window)
+
+
+def test_style_choices_and_subtitle_only_shortcuts_cycle_and_wrap():
+    app = QApplication.instance() or QApplication([])
+    window = preview_window()
+    try:
+        dialog = open_editor(app, window)
+        default = QFontDatabase.systemFont(QFontDatabase.GeneralFont).family()
+        fonts = [dialog.font_combo.itemText(index) for index in range(dialog.font_combo.count())]
+        available = set(QFontDatabase.families())
+        expected = sorted(({default} | (set(FONT_CHOICES) & available)), key=str.casefold)
+        assert fonts == expected
+        assert dialog.font_combo.currentText() == default
+        assert [(dialog.color_combo.itemText(index), dialog.color_combo.itemData(index))
+                for index in range(dialog.color_combo.count())] == list(COLOUR_CHOICES)
+
+        font_index = dialog.font_combo.currentIndex()
+        QTest.keyClick(dialog, Qt.Key_F)
+        app.processEvents()
+        assert dialog.font_combo.currentIndex() == (font_index + 1) % dialog.font_combo.count()
+        dialog.font_combo.setCurrentIndex(dialog.font_combo.count() - 1)
+        QTest.keyClick(dialog, Qt.Key_F)
+        app.processEvents()
+        assert dialog.font_combo.currentIndex() == 0
+
+        QTest.keyClick(dialog, Qt.Key_W)
+        app.processEvents()
+        assert dialog.color_combo.currentIndex() == 1
+        dialog.color_combo.setCurrentIndex(dialog.color_combo.count() - 1)
+        QTest.keyClick(dialog, Qt.Key_W)
+        app.processEvents()
+        assert dialog.color_combo.currentIndex() == 0
+
+        original_size = dialog.size_spin.value()
+        QTest.keyClick(dialog, Qt.Key_BracketLeft)
+        app.processEvents()
+        assert dialog.size_spin.value() == original_size + dialog.size_spin.singleStep()
+        assert dialog.document.captions[0].size == dialog.size_spin.value() / 100
+        QTest.keyClick(dialog, Qt.Key_BracketRight)
+        app.processEvents()
+        assert dialog.size_spin.value() == original_size
+
+        QTest.keyClick(dialog, Qt.Key_E)
+        QTest.keyClick(dialog, Qt.Key_R)
+        app.processEvents()
+        assert dialog.bold_button.isChecked() and dialog.italic_button.isChecked()
+        assert dialog.document.captions[0].bold and dialog.document.captions[0].italic
+        QTest.keyClick(dialog, Qt.Key_E)
+        QTest.keyClick(dialog, Qt.Key_R)
+        app.processEvents()
+        assert not dialog.bold_button.isChecked() and not dialog.italic_button.isChecked()
     finally:
         dispose(window)
 
