@@ -271,9 +271,10 @@ class VideoSessionController:
             if self._previous_format is None:
                 self._previous_format = combo.currentText()
             combo.setCurrentText("WebP")
-        item = combo.model().item(gif_index)
-        if item is not None:
-            item.setEnabled(not active)
+        for index in (gif_index, combo.findText("MP3")):
+            item = combo.model().item(index)
+            if item is not None:
+                item.setEnabled(not active)
         if not active and self._previous_format is not None:
             combo.setCurrentText(self._previous_format)
             self._previous_format = None

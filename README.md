@@ -63,3 +63,22 @@ gifmaker() {
     "$(cd /path/to/gifmaker && poetry env info --path)/bin/gifmaker" "$@"
 }
 ```
+
+## MP3 audio extraction
+
+With an MP4 loaded, select **MP3** in the output format dropdown. The existing
+selection markers choose the audio range, and **Output speed** changes its tempo
+while preserving pitch. Image settings are replaced by **Volume** (0–200%) and
+**Fade edges**, which adds short fades to soften abrupt cuts. Gain above 100%
+can clip loud recordings. MP3 uses a fixed high-quality VBR setting.
+
+**Generate Preview** creates a playable MP3 in the output preview, with a speaker
+icon and the usual play/pause control. Audio previews loop and pause the source
+player when started. Preview locking, automatic updates, and exporting an
+identical preview work as they do for animated images. The output summary shows
+audio duration and, after generation, measured file size.
+
+MP3 extraction requires an audio track in the MP4 and an FFmpeg build with the
+`libmp3lame` encoder. It is unavailable for WebP inputs. Captions and image
+settings do not affect the extracted audio. Standalone audio-file input is not
+supported.

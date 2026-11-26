@@ -63,6 +63,10 @@ def format_ffmpeg_error(stderr: str) -> str:
             "FFmpeg lacks libwebp_anim. Set GIFMAKER_FFMPEG to a WebP-capable "
             "FFmpeg executable; see File → Documentation."
         )
+    if "matches no streams" in stderr and "0:a:0" in stderr:
+        return "This MP4 has no audio track to extract."
+    if "Unknown encoder" in stderr and "libmp3lame" in stderr:
+        return "FFmpeg lacks the MP3 encoder libmp3lame. Choose a build with MP3 support using GIFMAKER_FFMPEG."
     return stderr
 
 

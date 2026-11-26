@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from gifmaker.models.render_settings import RenderSpec
+from gifmaker.services.audio_export import build_mp3_command
 from gifmaker.services.gif_export import (
     GifExportError,
     build_gif_command,
@@ -47,6 +48,7 @@ _FORMATS = {
     item.name: item for item in (
         OutputFormat("WebP", ".webp", _webp, _VISUAL_GROUPS | {"quality"}),
         OutputFormat("GIF", ".gif", _gif, _VISUAL_GROUPS),
+        OutputFormat("MP3", ".mp3", build_mp3_command, frozenset({"audio"})),
     )
 }
 

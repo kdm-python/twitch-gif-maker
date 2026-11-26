@@ -154,9 +154,10 @@ def test_export_format_combo_defaults_to_webp_with_gif_available() -> None:
 
     combo = window.export_format_combo
     assert isinstance(combo, QComboBox)
-    assert combo.count() == 2
+    assert combo.count() == 3
     assert combo.itemText(0) == "WebP"
     assert combo.itemText(1) == "GIF"
+    assert combo.itemText(2) == "MP3"
     assert combo.currentText() == "WebP"
 
     app.quit()

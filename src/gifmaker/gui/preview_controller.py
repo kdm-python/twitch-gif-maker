@@ -30,12 +30,28 @@ class PreviewController:
     def __init__(self, window, player: PreviewPlayer | None = None) -> None:
         self.window = window
         self.player = player if player is not None else AnimationPreviewPlayer(window)
+        self._animation_player = self.player
+        self._audio_player = None
+        self._preview_label = None
         self._playback_speed = 1.0
 
     def bind(self, preview_label) -> None:
+        self._preview_label = preview_label
         self.player.bind(preview_label)
 
     def load(self, preview_path: Path) -> None:
+        if preview_path.suffix.lower() == ".mp3":
+            if self._audio_player is None:
+                from gifmaker.gui.audio_preview_player import AudioPreviewPlayer
+                self._audio_player = AudioPreviewPlayer(self.window)
+                self._audio_player.bind(self._preview_label)
+            target = self._audio_player
+        else:
+            target = self._animation_player
+        if target is not self.player:
+            self.player.clear()
+            self.player = target
+            self.player.set_playback_speed(self._playback_speed)
         self.player.load(preview_path)
 
     def play(self) -> None:

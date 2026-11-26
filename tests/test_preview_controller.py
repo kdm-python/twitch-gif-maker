@@ -41,3 +41,20 @@ def test_clear_can_leave_artifact_on_disk(tmp_path: Path):
     controller = PreviewController(window, player=Mock())
     controller.clear(remove_temp_file=False)
     assert artifact.exists()
+
+
+def test_switching_audio_and_animation_stops_previous_player_and_restores_speed():
+    window = SimpleNamespace()
+    animation, audio = Mock(), Mock()
+    controller = PreviewController(window, player=animation)
+    controller._audio_player = audio
+    controller.set_playback_speed(0.5)
+    controller.load(Path("preview.mp3"))
+    animation.clear.assert_called_once()
+    audio.set_playback_speed.assert_called_once_with(0.5)
+    audio.load.assert_called_once_with(Path("preview.mp3"))
+    controller.set_playback_speed(2.0)
+    controller.load(Path("preview.webp"))
+    audio.clear.assert_called_once()
+    animation.set_playback_speed.assert_called_with(2.0)
+    animation.load.assert_called_once_with(Path("preview.webp"))

@@ -131,7 +131,7 @@ class FormatControls:
         self.export_format_combo = QComboBox()
         # WebP provides materially better visual quality for the Discord use
         # case. GIF remains available as a compatibility fallback.
-        self.export_format_combo.addItems(["WebP", "GIF"])
+        self.export_format_combo.addItems(["WebP", "GIF", "MP3"])
 
 
 class ExportControlWidgets:

@@ -5,9 +5,11 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QSpinBox,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -78,6 +80,18 @@ class ExportControlsPanel(QWidget):
             "sharpness": (sharpness_label, self.sharpness_combo),
             "crop": (self.apply_crop_button, self.reset_crop_button),
         }
+        self.audio_volume = QSpinBox()
+        self.audio_volume.setRange(0, 200)
+        self.audio_volume.setValue(100)
+        self.audio_volume.setSuffix("%")
+        self.audio_volume.setToolTip("Audio gain. Values above 100% may clip loud recordings.")
+        self.audio_fade = QCheckBox("Fade edges")
+        self.audio_fade.setToolTip("Short fade in and out to soften abrupt cuts")
+        volume_label = QLabel("Volume")
+        self.format_control_groups["audio"] = (volume_label, self.audio_volume, self.audio_fade)
+        self.secondary_layout.addWidget(volume_label)
+        self.secondary_layout.addWidget(self.audio_volume)
+        self.secondary_layout.addWidget(self.audio_fade)
         self.secondary_layout.addWidget(size_label)
         self.secondary_layout.addWidget(self.export_width_input)
         self.secondary_layout.addWidget(size_separator)
@@ -128,6 +142,8 @@ class ExportControlsPanel(QWidget):
 
     def bind_window(self, window) -> None:
         """Wire this panel to the main-window controller."""
+        self.audio_volume.valueChanged.connect(window.on_render_setting_changed)
+        self.audio_fade.toggled.connect(window.on_render_setting_changed)
         self.output_speed_slider.valueChanged.connect(window.on_output_speed_changed)
         self.export_width_input.valueChanged.connect(window.on_width_changed)
         self.export_height_input.valueChanged.connect(window.on_height_changed)

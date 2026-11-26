@@ -70,6 +70,18 @@ class WebPSettings:
 
 
 @dataclass(frozen=True)
+class AudioSettings:
+    """MP3 controls; high quality is fixed rather than user configurable."""
+
+    volume_percent: int = 100
+    fade_edges: bool = False
+
+    @property
+    def quality_preset(self) -> str:
+        return "high"
+
+
+@dataclass(frozen=True)
 class GIFSettings:
     """GIF has a fixed palette configuration in the UI."""
 
@@ -87,13 +99,13 @@ class RenderSettings:
 
     shared: SharedSettings
     visual: VisualSettings
-    format_settings: WebPSettings | GIFSettings
+    format_settings: WebPSettings | GIFSettings | AudioSettings
 
     def __init__(self, start_seconds: float, end_seconds: float, fps: int = 24,
                  width: int = 640, height: int = 360, playback_speed: float = 1.0,
                  quality_preset: str = "balanced", sharpness_preset: str = "mild",
                  crop: tuple[int, int, int, int] | None = None, *,
-                 format_settings: WebPSettings | GIFSettings | None = None) -> None:
+                 format_settings: WebPSettings | GIFSettings | AudioSettings | None = None) -> None:
         object.__setattr__(self, "shared", SharedSettings(start_seconds, end_seconds, playback_speed))
         object.__setattr__(self, "visual", VisualSettings(fps, width, height, sharpness_preset, crop))
         object.__setattr__(self, "format_settings", format_settings if format_settings is not None else WebPSettings(quality_preset))

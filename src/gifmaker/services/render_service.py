@@ -36,7 +36,7 @@ class RenderService:
 
     def prepare_job(self, spec: RenderSpec, destination: str | Path):
         """Return command plus caller-owned workspace for a direct video source."""
-        if spec.subtitles.captions:
+        if spec.subtitles.captions and spec.output_format != "MP3":
             from gifmaker.services.subtitle_render import prepare_job
 
             get_output_format(spec.output_format).build_command(spec, destination)
@@ -48,6 +48,6 @@ class RenderService:
 
     def build_command(self, spec: RenderSpec, destination: str | Path) -> list[str]:
         """Return a validated command for a non-blocking render process."""
-        if spec.subtitles.captions:
+        if spec.subtitles.captions and spec.output_format != "MP3":
             raise ValueError("Caption rendering requires a prepared job; use prepare_job() or export().")
         return get_output_format(spec.output_format).build_command(spec, destination)

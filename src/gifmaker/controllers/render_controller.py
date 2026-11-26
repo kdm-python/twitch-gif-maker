@@ -9,15 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import QProcess, QTimer
+from PySide6.QtCore import QProcess, Qt, QTimer
 from PySide6.QtWidgets import QFileDialog
 
 from gifmaker.models.render_estimate import calculate_render_estimate, format_file_size
 from gifmaker.models.render_settings import (
+    AudioSettings,
     RenderSettings,
     RenderSpec,
     resolve_visual_settings,
 )
+from gifmaker.models.subtitles import SubtitleDocument
 from gifmaker.services.gif_export import format_ffmpeg_error
 from gifmaker.services.output_formats import get_output_format
 from gifmaker.services.render_service import RenderService
@@ -57,6 +59,13 @@ class RenderController:
         """Resolve the current timeline and controls into immutable settings."""
         window = self.window
         selected_format = output_format or window.export_format_combo.currentText()
+        if selected_format == "MP3":
+            if window.clip_start_time is None or window.clip_end_time is None or window.clip_end_time <= window.clip_start_time:
+                raise ValueError("Select a clip range on the timeline before export")
+            panel = window.export_controls_panel
+            return RenderSettings(window.clip_start_time, window.clip_end_time,
+                                  playback_speed=panel.output_speed_slider.value() / 100,
+                                  format_settings=AudioSettings(panel.audio_volume.value(), panel.audio_fade.isChecked()))
         return resolve_visual_settings(
             window.clip_start_time, window.clip_end_time,
             window.export_controls_panel.control_values(), window._current_crop,
@@ -72,13 +81,19 @@ class RenderController:
             source_path=window.current_video_path,
             output_format=output_format or window.export_format_combo.currentText(),
             settings=self._resolve_render_settings(output_format=output_format),
-            subtitles=window.subtitle_controller.render_document(),
+            subtitles=(window.subtitle_controller.render_document()
+                       if (output_format or window.export_format_combo.currentText()) != "MP3"
+                       else SubtitleDocument()),
         )
 
     def on_output_format_changed(self, _value=None) -> None:
         """Apply format-specific controls before creating a new render revision."""
         self.window.export_controls_panel.set_output_format(
             self.window.export_format_combo.currentText()
+        )
+        self.window.gif_preview_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            self.window.export_format_combo.currentText() == "MP3",
         )
         self.on_render_setting_changed()
 
@@ -262,6 +277,14 @@ class RenderController:
                 tooltip = f"Matching preview: {size:,} bytes. Export will reuse this file."
         except (OSError, ValueError):
             pass
+        if window.export_format_combo.currentText() == "MP3":
+            duration = (settings.end_seconds - settings.start_seconds) / settings.playback_speed
+            if not self._preview_matches(self._resolve_render_spec()):
+                size_text = "High quality MP3"
+                tooltip = "Generate a preview for the measured file size."
+            window.output_summary_label.setText(f"Output: MP3 · {duration:.2f}s · {size_text}")
+            window.output_summary_label.setToolTip(tooltip)
+            return
         window.output_summary_label.setText(
             f"Output: {settings.width}×{settings.height} · {estimate.frame_count} frames · "
             f"{estimate.duration_seconds:.2f}s · {size_text}"
